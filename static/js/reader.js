@@ -33,15 +33,30 @@ async function renderPage(pageNumber) {
 
     const page = await pdf.getPage(pageNumber);
 
-    const scale = 1.5;
+    // Higher logical resolution for sharper text.
+    const scale = 2;
+
+    // Makes it sharp on Windows display scaling / high-DPI screens.
+    const outputScale = window.devicePixelRatio || 1;
+
     const viewport = page.getViewport({ scale });
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+    // Real internal canvas resolution.
+    canvas.width = Math.floor(viewport.width * outputScale);
+    canvas.height = Math.floor(viewport.height * outputScale);
+
+    // Visual size on the page.
+    canvas.style.width = `${Math.floor(viewport.width)}px`;
+    canvas.style.height = `${Math.floor(viewport.height)}px`;
 
     await page.render({
         canvasContext: context,
-        viewport: viewport
+        viewport: viewport,
+
+        // PDF.js draws extra pixels internally, so text stays crisp.
+        transform: outputScale !== 1
+            ? [outputScale, 0, 0, outputScale, 0, 0]
+            : null
     }).promise;
 
     pageCounter.textContent = `Page ${currentPage} / ${pdf.numPages}`;
@@ -51,7 +66,6 @@ async function renderPage(pageNumber) {
 
     isRendering = false;
 }
-
 
 previousButton.addEventListener("click", async () => {
     if (currentPage > 1) {
