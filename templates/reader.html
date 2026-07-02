@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>PDF Reader</title>
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+</head>
+<body>
+
+    <main
+        id="reader"
+        data-pdf-url="{{ url_for('static', filename='pdfs/test.pdf') }}"
+    >
+        <div class="controls">
+            <button id="previous-button">Previous</button>
+
+            <span id="page-counter">Loading PDF...</span>
+
+            <button id="next-button">Next</button>
+        </div>
+
+        <canvas id="pdf-canvas"></canvas>
+    </main>
+
+    <script
+        type="module"
+        src="{{ url_for('static', filename='js/reader.js') }}"
+    ></script>
+
+</body>
+</html>
