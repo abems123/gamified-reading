@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>Sign Up</title>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.4.1/dist/css/bootstrap.min.css" integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+
+    <style>
+        html, body {
+            height: 100%;
+        }
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .signup-card {
+            width: 100%;
+            max-width: 400px;
+            padding: 2rem;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-radius: 0.5rem;
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+        }
+        .login-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 1rem;
+        }
+        .password-mismatch {
+            display: none;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="signup-card">
+        <h3 class="mb-4 text-center">Sign Up</h3>
+
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                <div class="alert alert-danger" role="alert">
+                    <ul class="mb-0 pl-3">
+                        {% for message in messages %}
+                            <li>{{ message }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        <form method="POST" id="signupForm" novalidate>
+            <div class="form-group">
+                <label for="fullName">Full Name</label>
+                <input type="text" name="full_name" class="form-control" id="fullName" required>
+            </div>
+            <div class="form-group">
+                <label for="username">Username</label>
+                <input type="text" name="username" class="form-control" id="username" required>
+            </div>
+            <div class="form-group">
+                <label for="signupEmail">Email address</label>
+                <input type="email" name="email" class="form-control" id="signupEmail" aria-describedby="emailHelp" required>
+                <small id="emailHelp" class="form-text text-muted">We'll never share your email with anyone else.</small>
+            </div>
+            <div class="form-group">
+                <label for="signupPassword">Password</label>
+                <input type="password" name="password" class="form-control" id="signupPassword" required minlength="8">
+            </div>
+            <div class="form-group">
+                <label for="confirmPassword">Confirm Password</label>
+                <input type="password" name="confirm_password" class="form-control" id="confirmPassword" required minlength="8">
+                <small class="form-text text-danger password-mismatch" id="mismatchWarning">Passwords do not match.</small>
+            </div>
+
+            <div class="login-row">
+                <button type="submit" class="btn btn-primary">Create Account</button>
+                <button type="button" class="btn btn-outline-secondary" onclick="window.location.href='login'">Log In</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        const form = document.getElementById('signupForm');
+        const password = document.getElementById('signupPassword');
+        const confirmPassword = document.getElementById('confirmPassword');
+        const mismatchWarning = document.getElementById('mismatchWarning');
+
+        form.addEventListener('submit', function (e) {
+            if (password.value !== confirmPassword.value) {
+                e.preventDefault();
+                mismatchWarning.style.display = 'block';
+                confirmPassword.classList.add('is-invalid');
+            } else {
+                mismatchWarning.style.display = 'none';
+                confirmPassword.classList.remove('is-invalid');
+            }
+        });
+    </script>
+</body>
+</html>
