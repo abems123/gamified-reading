@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Upload a book · Chapters</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+
+<style>
+    :root {
+        --ink: #14181F;
+        --surface: #1D242E;
+        --surface-2: #242C38;
+        --paper: #F4EFE4;
+        --paper-dim: #C9C2B2;
+        --amber: #E3A84B;
+        --amber-dim: #8A6428;
+        --ember: #C1502E;
+        --line: rgba(244,239,228,0.08);
+        --radius: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+        background: var(--ink);
+        color: var(--paper);
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-image: radial-gradient(ellipse 900px 500px at 20% 0%, rgba(227,168,75,0.10), transparent 60%);
+    }
+    h1 { font-family: 'Fraunces', serif; font-weight: 700; margin: 0 0 0.3rem; font-size: 1.5rem; }
+    .sub { color: var(--paper-dim); font-size: 0.88rem; margin-bottom: 1.6rem; }
+    a { color: var(--amber); text-decoration: none; }
+
+    .card {
+        width: 100%;
+        max-width: 440px;
+        background: linear-gradient(160deg, var(--surface-2), var(--surface));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 2.2rem 2.2rem 2.4rem;
+    }
+
+    .flash-stack { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 1.2rem; }
+    .flash {
+        padding: 0.7rem 0.9rem;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        border: 1px solid var(--line);
+    }
+    .flash.success { border-color: rgba(122,148,113,0.4); color: #7A9471; }
+    .flash.danger  { border-color: rgba(193,80,46,0.4); color: var(--ember); }
+
+    .form-group { margin-bottom: 1.3rem; }
+    label {
+        display: block;
+        font-size: 0.8rem;
+        color: var(--paper-dim);
+        margin-bottom: 0.45rem;
+    }
+    input[type="text"] {
+        width: 100%;
+        padding: 0.65rem 0.8rem;
+        border-radius: 8px;
+        border: 1px solid var(--line);
+        background: rgba(244,239,228,0.04);
+        color: var(--paper);
+        font-size: 0.92rem;
+    }
+    input[type="text"]:focus, .dropzone:focus-within {
+        outline: none;
+        border-color: var(--amber);
+    }
+    input[type="text"]::placeholder { color: var(--paper-dim); opacity: 0.6; }
+
+    .dropzone {
+        border: 1px dashed var(--line);
+        border-radius: 10px;
+        padding: 1.6rem 1rem;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color .15s ease, background .15s ease;
+        position: relative;
+    }
+    .dropzone:hover { border-color: var(--amber-dim); }
+    .dropzone.has-file { border-color: var(--amber); background: rgba(227,168,75,0.05); }
+    .dropzone input[type="file"] {
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+    }
+    .dropzone .icon { font-size: 1.4rem; margin-bottom: 0.4rem; color: var(--amber); }
+    .dropzone .hint { font-size: 0.78rem; color: var(--paper-dim); margin-top: 0.3rem; }
+    .dropzone .filename { font-size: 0.85rem; color: var(--paper); font-weight: 600; }
+
+    .limit-note {
+        font-size: 0.78rem;
+        color: var(--paper-dim);
+        margin-bottom: 1.4rem;
+    }
+
+    .btn {
+        width: 100%;
+        padding: 0.75rem;
+        border-radius: 8px;
+        border: none;
+        background: var(--amber);
+        color: #201404;
+        font-weight: 700;
+        font-size: 0.92rem;
+        cursor: pointer;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn:hover:not(:disabled) { filter: brightness(1.08); }
+
+    .back-link { display: block; text-align: center; margin-top: 1.2rem; font-size: 0.85rem; color: var(--paper-dim); }
+    .back-link:hover { color: var(--amber); }
+
+    .limit-reached {
+        text-align: center;
+        color: var(--paper-dim);
+        font-size: 0.9rem;
+        padding: 1rem 0;
+    }
+</style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Upload a book</h1>
+    <div class="sub">PDF files only, for now.</div>
+
+    <div class="flash-stack">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="flash {{ category }}">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    {% if can_upload %}
+    <form method="POST" enctype="multipart/form-data" id="uploadForm">
+        <div class="form-group">
+            <label for="title">Title <span style="opacity:.6;">(optional — defaults to file name)</span></label>
+            <input type="text" id="title" name="title" placeholder="e.g. Atomic Habits">
+        </div>
+
+        <div class="form-group">
+            <label>PDF file</label>
+            <div class="dropzone" id="dropzone">
+                <input type="file" name="book" id="fileInput" accept="application/pdf" required>
+                <div class="icon">&#8593;</div>
+                <div class="filename" id="filenameLabel">Click or drop a PDF here</div>
+                <div class="hint">Max size depends on your membership tier</div>
+            </div>
+        </div>
+
+        <div class="limit-note">
+            {{ user.uploaded_books | default(0) }} / {{ upload_limit | default(1) }} documents used on your plan
+        </div>
+
+        <button type="submit" class="btn">Upload book</button>
+    </form>
+    {% else %}
+    <div class="limit-reached">
+        You've used all {{ upload_limit | default(1) }} document slots on your current plan.<br>
+        Upgrade your membership to upload more books.
+    </div>
+    {% endif %}
+
+    <a href="{{ url_for('dashboard') }}" class="back-link">&larr; Back to dashboard</a>
+</div>
+
+<script>
+    const fileInput = document.getElementById('fileInput');
+    const dropzone = document.getElementById('dropzone');
+    const filenameLabel = document.getElementById('filenameLabel');
+
+    if (fileInput) {
+        fileInput.addEventListener('change', () => {
+            if (fileInput.files.length > 0) {
+                filenameLabel.textContent = fileInput.files[0].name;
+                dropzone.classList.add('has-file');
+            } else {
+                filenameLabel.textContent = 'Click or drop a PDF here';
+                dropzone.classList.remove('has-file');
+            }
+        });
+    }
+</script>
+
+</body>
+</html>

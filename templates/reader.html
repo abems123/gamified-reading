@@ -1,37 +1,861 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{ book.title | default('Reading') }} · Chapters</title>
 
-    <title>PDF Reader</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
-    <link
-        rel="stylesheet"
-        href="{{ url_for('static', filename='css/style.css') }}"
-    >
+<style>
+    :root {
+        --ink: #14181F;
+        --surface: #1D242E;
+        --surface-2: #242C38;
+        --paper: #F4EFE4;
+        --paper-dim: #C9C2B2;
+        --amber: #E3A84B;
+        --amber-dim: #8A6428;
+        --ember: #C1502E;
+        --moss: #7A9471;
+        --line: rgba(244,239,228,0.08);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; }
+    body {
+        background: var(--ink);
+        color: var(--paper);
+        font-family: 'Inter', sans-serif;
+        display: flex;
+        flex-direction: column;
+    }
+    a { color: inherit; text-decoration: none; }
+    .mono { font-family: 'IBM Plex Mono', monospace; }
+
+    /* Top bar */
+    .reader-top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 0.9rem 1.6rem;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+    }
+    .reader-top .back { font-size: 0.85rem; color: var(--paper-dim); }
+    .reader-top .back:hover { color: var(--amber); }
+    .reader-top h1 {
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 1.05rem;
+        margin: 0;
+    }
+    .top-actions {
+        display: flex;
+        gap: 0.5rem;
+    }
+    .icon-btn {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        color: var(--paper-dim);
+        border-radius: 8px;
+        padding: 0.45rem 0.7rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .icon-btn:hover { color: var(--amber); border-color: var(--amber); }
+    .icon-btn.active { color: var(--amber); border-color: var(--amber-dim); }
+
+    /* Layout: PDF viewer + side timer panel */
+    .reader-body {
+        flex: 1;
+        display: grid;
+        grid-template-columns: 190px 1fr 280px;
+        min-height: 0;
+        transition: grid-template-columns .2s ease;
+    }
+    .reader-body.thumbs-hidden { grid-template-columns: 0px 1fr 280px; }
+    .reader-body.timer-hidden { grid-template-columns: 190px 1fr 0px; }
+    .reader-body.thumbs-hidden.timer-hidden { grid-template-columns: 0px 1fr 0px; }
+    .reader-body.thumbs-hidden .thumb-panel {
+        padding: 0; opacity: 0; pointer-events: none; overflow: hidden;
+    }
+    .reader-body.timer-hidden .timer-panel {
+        padding: 0;
+        opacity: 0;
+        pointer-events: none;
+        overflow: hidden;
+    }
+
+    /* Thumbnail sidebar */
+    .thumb-panel {
+        border-right: 1px solid var(--line);
+        overflow-y: auto;
+        padding: 1rem 0.7rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+    .thumb-item {
+        cursor: pointer;
+        border-radius: 6px;
+        border: 2px solid transparent;
+        padding: 0.3rem;
+        text-align: center;
+    }
+    .thumb-item.active { border-color: var(--amber); background: rgba(227,168,75,0.08); }
+    .thumb-item canvas, .thumb-item .thumb-placeholder {
+        width: 100%;
+        height: 130px;
+        background: #2a3140;
+        border-radius: 3px;
+        display: block;
+    }
+    .thumb-item .thumb-num {
+        font-size: 0.7rem;
+        color: var(--paper-dim);
+        margin-top: 0.3rem;
+        font-family: 'IBM Plex Mono', monospace;
+    }
+
+    /* Search bar */
+    .search-bar {
+        display: none;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.6rem 1rem;
+        border-bottom: 1px solid var(--line);
+        flex-shrink: 0;
+    }
+    .search-bar.open { display: flex; }
+    .search-bar input {
+        flex: 1;
+        background: var(--surface);
+        border: 1px solid var(--line);
+        color: var(--paper);
+        border-radius: 8px;
+        padding: 0.5rem 0.8rem;
+        font-size: 0.85rem;
+    }
+    .search-bar input:focus { outline: none; border-color: var(--amber); }
+    .search-bar .search-status {
+        font-size: 0.78rem;
+        color: var(--paper-dim);
+        min-width: 90px;
+        white-space: nowrap;
+    }
+    .viewer {
+        background: #0e1116;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+        overflow: hidden;
+    }
+    .viewer .empty-state {
+        color: var(--paper-dim);
+        font-size: 0.9rem;
+        text-align: center;
+    }
+    .page-stage {
+        flex: 1;
+        width: 100%;
+        display: block;
+        overflow: auto;
+        padding: 1.5rem;
+        cursor: grab;
+        user-select: none;
+        text-align: center;
+    }
+    .page-stage.dragging {
+        cursor: grabbing;
+    }
+    .page-stage canvas {
+        box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+        background: white;
+        display: inline-block;
+        vertical-align: top;
+    }
+    .page-wrap {
+        position: relative;
+        display: inline-block;
+    }
+    .textLayer {
+        position: absolute;
+        top: 0; left: 0;
+        overflow: hidden;
+        line-height: 1;
+        opacity: 1;
+        user-select: text;
+    }
+    .textLayer span {
+        color: transparent;
+        user-select: text;
+        position: absolute;
+        white-space: pre;
+        cursor: text;
+        transform-origin: 0% 0%;
+    }
+    .textLayer mark {
+        background: rgba(227,168,75,0.55);
+        color: transparent;
+    }
+    .textLayer ::selection { background: rgba(227,168,75,0.4); }
+    .page-nav {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 1.2rem;
+        padding: 0.8rem 1rem;
+        border-top: 1px solid var(--line);
+        width: 100%;
+    }
+    .page-nav button {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        color: var(--paper);
+        border-radius: 8px;
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+    }
+    .page-nav button:hover:not(:disabled) { border-color: var(--amber); color: var(--amber); }
+    .page-nav button:disabled { opacity: 0.35; cursor: not-allowed; }
+    .page-nav .page-indicator {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        color: var(--paper-dim);
+        min-width: 60px;
+        text-align: center;
+    }
+    .page-nav .page-indicator#pageIndicator { min-width: 110px; }
+    .page-nav .nav-divider {
+        width: 1px;
+        height: 22px;
+        background: var(--line);
+        margin: 0 0.3rem;
+    }
+
+    .timer-panel {
+        border-left: 1px solid var(--line);
+        padding: 1.5rem 1.4rem;
+        display: flex;
+        flex-direction: column;
+        gap: 1.4rem;
+        overflow-y: auto;
+    }
+    .timer-card {
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: 12px;
+        padding: 1.1rem 1.2rem;
+    }
+    .timer-label {
+        font-size: 0.74rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--paper-dim);
+        margin-bottom: 0.4rem;
+    }
+    .timer-value {
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.6rem;
+        font-weight: 600;
+    }
+    .timer-card.today .timer-value { color: var(--amber); }
+    .timer-card.total .timer-value { color: var(--moss); }
+
+    .status-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 0.78rem;
+        color: var(--paper-dim);
+    }
+    .status-dot {
+        width: 8px; height: 8px;
+        border-radius: 50%;
+        background: var(--moss);
+    }
+    .status-dot.paused { background: var(--paper-dim); }
+
+    .progress-block { margin-top: auto; }
+    .progress-track {
+        height: 8px;
+        border-radius: 100px;
+        background: rgba(244,239,228,0.08);
+        overflow: hidden;
+        margin-top: 0.5rem;
+    }
+    .progress-fill {
+        height: 100%;
+        background: var(--moss);
+        width: var(--pct, 0%);
+    }
+    .progress-label {
+        font-size: 0.78rem;
+        color: var(--paper-dim);
+        display: flex;
+        justify-content: space-between;
+    }
+
+    @media (max-width: 900px) {
+        .reader-body { grid-template-columns: 1fr !important; grid-template-rows: 1fr auto; }
+        .thumb-panel { display: none; }
+        .timer-panel { border-left: none; border-top: 1px solid var(--line); flex-direction: row; flex-wrap: wrap; }
+        .timer-card { flex: 1; min-width: 140px; }
+        .progress-block { width: 100%; }
+    }
+</style>
 </head>
 <body>
 
-    <main
-        id="reader"
-        data-pdf-url="{{ url_for('static', filename='pdfs/test.pdf') }}"
-    >
-        <div class="controls">
-            <button id="previous-button">Previous</button>
+<!--
+    ================================================================
+    BACKEND TODO — reader page + reading timer
+    ================================================================
+    This route needs to:
 
-            <span id="page-counter">Loading PDF...</span>
+    1. @login_required, and confirm the requested book actually
+       belongs to session["user_id"] (404 or redirect otherwise —
+       don't let user A load user B's book by guessing an id).
 
-            <button id="next-button">Next</button>
+    2. Pass a `book` dict with: id, title, pages, read_pages,
+       minutes_spent (all-time total), minutes_today.
+       `minutes_today` should already be reset server-side if
+       book.last_read_date != today's date (do this check wherever
+       you load the book, e.g. right before rendering this page).
+
+    3. Serve the actual PDF bytes via a separate route, e.g.
+       /books/<id>/file, that also re-checks ownership before calling
+       send_from_directory(...). Point the iframe's src at that route
+       (see the placeholder src="#" below).
+
+    4. Add a POST route, e.g. /reader/<id>/track, that the JS below
+       calls periodically with {"seconds": N}. That route should:
+         - re-check ownership of the book
+         - if book.last_read_date != today: reset minutes_today to 0
+           and set last_read_date = today
+         - minutes_today += N/60, minutes_spent += N/60
+         - probably also bump user.todays_xp / total_xp here per your
+           XP formula (minutes * pages read, per your proposal) —
+           that's a separate design decision, not done here.
+       Return the updated {minutes_today, minutes_spent} as JSON so
+       the page can sync in case of drift.
+
+    5. The JS below already handles: counting seconds while the tab
+       is visible/focused (pausing when the user tabs away), sending
+       a ping every 30s, and sending a final ping via
+       navigator.sendBeacon on page unload so the last few seconds
+       aren't lost when they close the tab. You shouldn't need to
+       touch this part — just make the /track endpoint match the
+       payload shape it sends.
+    ================================================================
+-->
+
+<div class="reader-top">
+    <a href="{{ url_for('dashboard') }}" class="back">&larr; Dashboard</a>
+    <h1>{{ book.title | default('Untitled') }}</h1>
+    <div class="top-actions">
+        <button id="toggleThumbsBtn" class="icon-btn" title="Show/hide thumbnails">Pages</button>
+        <button id="toggleSearchBtn" class="icon-btn" title="Search in document">Search</button>
+        <button id="toggleTimerBtn" class="icon-btn" title="Show/hide timer">Timer</button>
+        <button id="fullscreenBtn" class="icon-btn" title="Toggle fullscreen">&#x26F6;</button>
+    </div>
+</div>
+
+<div class="reader-body" id="readerBody">
+    <div class="thumb-panel" id="thumbPanel"></div>
+
+    <div class="viewer">
+        {% if book %}
+        <div class="search-bar" id="searchBar">
+            <input type="text" id="searchInput" placeholder="Search in this document…">
+            <span class="search-status" id="searchStatus"></span>
+            <button id="searchPrevBtn" class="icon-btn" title="Previous match">&uarr;</button>
+            <button id="searchNextBtn" class="icon-btn" title="Next match">&darr;</button>
+        </div>
+        <div class="page-stage">
+            <div class="page-wrap">
+                <canvas id="pdf-canvas"></canvas>
+                <div class="textLayer" id="textLayer"></div>
+            </div>
+        </div>
+        <div class="page-nav">
+            <button id="prevBtn">&larr; Previous</button>
+            <span class="page-indicator" id="pageIndicator">Loading…</span>
+            <button id="nextBtn">Next &rarr;</button>
+            <span class="nav-divider"></span>
+            <button id="zoomOutBtn" title="Zoom out">&minus;</button>
+            <span class="page-indicator" id="zoomIndicator">100%</span>
+            <button id="zoomInBtn" title="Zoom in">+</button>
+        </div>
+        {% else %}
+        <div class="empty-state">Couldn't load this book.</div>
+        {% endif %}
+    </div>
+
+    <div class="timer-panel">
+        <div class="status-row">
+            <span class="status-dot" id="statusDot"></span>
+            <span id="statusText">Tracking time</span>
         </div>
 
-        <canvas id="pdf-canvas"></canvas>
-    </main>
+        <div class="timer-card today">
+            <div class="timer-label">Read today</div>
+            <div class="timer-value mono" id="todayValue">{{ '%d:%02d' % ((book.seconds_today | default(0)) // 60, (book.seconds_today | default(0)) % 60) }}</div>
+        </div>
 
-    <script
-        type="module"
-        src="{{ url_for('static', filename='js/reader.js') }}"
-    ></script>
+        <div class="timer-card total">
+            <div class="timer-label">Total on this book</div>
+            <div class="timer-value mono" id="totalValue">{{ '%d:%02d' % ((book.seconds_spent | default(0)) // 60, (book.seconds_spent | default(0)) % 60) }}</div>
+        </div>
+
+        <div class="progress-block">
+            <div class="progress-label">
+                <span>Page {{ book.read_pages | default(0) }} of {{ book.pages | default(0) }}</span>
+                <span>{{ pct | default(0) }}%</span>
+            </div>
+            <div class="progress-track">
+                <div class="progress-fill" style="--pct: {{ pct | default(0) }}%;"></div>
+            </div>
+            <button id="resetBtn" class="icon-btn" style="width: 100%; margin-top: 0.8rem;">Reset progress</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // ---- Custom PDF viewer (pdf.js) ----
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+        "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    const PDF_URL = "{{ url_for('book_file', book_id=book.id) if book else '' }}";
+    const canvas = document.getElementById('pdf-canvas');
+    const ctx = canvas ? canvas.getContext('2d') : null;
+    const textLayerDiv = document.getElementById('textLayer');
+    const pageWrap = document.querySelector('.page-wrap');
+    const pageIndicator = document.getElementById('pageIndicator');
+    const prevBtn = document.getElementById('prevBtn');
+    const nextBtn = document.getElementById('nextBtn');
+
+    let pdfDoc = null;
+    let currentPage = {{ (book.read_pages | default(0)) + 1 if book else 1 }};
+    let renderInProgress = false;
+    let zoomLevel = 1; // multiplier on top of the "fit to viewer" scale
+    const textContentCache = new Map(); // page number -> pdf.js text content
+
+    const zoomIndicator = document.getElementById('zoomIndicator');
+    const zoomInBtn = document.getElementById('zoomInBtn');
+    const zoomOutBtn = document.getElementById('zoomOutBtn');
+
+    async function getPageText(num) {
+        if (textContentCache.has(num)) return textContentCache.get(num);
+        const page = await pdfDoc.getPage(num);
+        const content = await page.getTextContent();
+        textContentCache.set(num, content);
+        return content;
+    }
+
+    // ---- Render current page: crisp (device-pixel-ratio aware) + real
+    // selectable text layer on top for copy/search ----
+    async function renderPage(num) {
+        if (!pdfDoc || renderInProgress) return;
+        renderInProgress = true;
+
+        const page = await pdfDoc.getPage(num);
+        const stage = canvas.closest('.page-stage');
+        const containerWidth = stage.clientWidth - 48;
+        const containerHeight = stage.clientHeight - 48;
+        const unscaledViewport = page.getViewport({ scale: 1 });
+        const fitScale = Math.min(
+            containerWidth / unscaledViewport.width,
+            containerHeight / unscaledViewport.height
+        );
+        const viewport = page.getViewport({ scale: fitScale * zoomLevel });
+
+        // Render the canvas at real device-pixel density so it's crisp
+        // on retina/high-DPI screens, then scale it back down with CSS.
+        const outputScale = window.devicePixelRatio || 1;
+        canvas.width = Math.floor(viewport.width * outputScale);
+        canvas.height = Math.floor(viewport.height * outputScale);
+        canvas.style.width = Math.floor(viewport.width) + "px";
+        canvas.style.height = Math.floor(viewport.height) + "px";
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+
+        await page.render({ canvasContext: ctx, viewport, transform }).promise;
+
+        // Text layer, sized/positioned to exactly match the canvas above it.
+        pageWrap.style.width = Math.floor(viewport.width) + "px";
+        pageWrap.style.height = Math.floor(viewport.height) + "px";
+        textLayerDiv.style.width = Math.floor(viewport.width) + "px";
+        textLayerDiv.style.height = Math.floor(viewport.height) + "px";
+        textLayerDiv.style.setProperty('--scale-factor', viewport.scale);
+        textLayerDiv.innerHTML = "";
+        try {
+            const textContent = await getPageText(num);
+            await pdfjsLib.renderTextLayer({
+                textContentSource: textContent,
+                container: textLayerDiv,
+                viewport,
+                textDivs: [],
+            }).promise;
+        } catch (err) {
+            console.error("Text layer failed to render", err);
+        }
+
+        pageIndicator.textContent = "Page " + num + " of " + pdfDoc.numPages;
+        zoomIndicator.textContent = Math.round(zoomLevel * 100) + "%";
+        prevBtn.disabled = num <= 1;
+        nextBtn.disabled = num >= pdfDoc.numPages;
+        zoomOutBtn.disabled = zoomLevel <= 0.5;
+        zoomInBtn.disabled = zoomLevel >= 3;
+        renderInProgress = false;
+
+        savePage(num);
+        highlightSearchOnPage(num);
+        setActiveThumb(num);
+    }
+
+    let pageSaveTimeout = null;
+    function savePage(num) {
+        clearTimeout(pageSaveTimeout);
+        pageSaveTimeout = setTimeout(() => {
+            fetch("/reader/" + BOOK_ID + "/page", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ page: num }),
+            }).catch(() => {});
+        }, 400);
+    }
+
+    if (PDF_URL) {
+        pdfjsLib.getDocument(PDF_URL).promise.then((doc) => {
+            pdfDoc = doc;
+            if (currentPage > doc.numPages) currentPage = 1;
+            renderPage(currentPage);
+            buildThumbnails(doc.numPages);
+        }).catch((err) => {
+            pageIndicator.textContent = "Couldn't load PDF";
+            console.error(err);
+        });
+    }
+
+    prevBtn?.addEventListener('click', () => {
+        if (currentPage > 1) { currentPage -= 1; renderPage(currentPage); }
+    });
+    nextBtn?.addEventListener('click', () => {
+        if (pdfDoc && currentPage < pdfDoc.numPages) { currentPage += 1; renderPage(currentPage); }
+    });
+    zoomInBtn?.addEventListener('click', () => {
+        zoomLevel = Math.min(3, Math.round((zoomLevel + 0.15) * 100) / 100);
+        renderPage(currentPage);
+    });
+    zoomOutBtn?.addEventListener('click', () => {
+        zoomLevel = Math.max(0.5, Math.round((zoomLevel - 0.15) * 100) / 100);
+        renderPage(currentPage);
+    });
+
+    // Keyboard shortcuts — arrows to navigate, Ctrl/Cmd+F to search, Esc to close it.
+    document.addEventListener('keydown', (e) => {
+        const typing = document.activeElement === searchInput;
+        if (!typing && e.key === 'ArrowRight') nextBtn?.click();
+        if (!typing && e.key === 'ArrowLeft') prevBtn?.click();
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            openSearch();
+        }
+        if (e.key === 'Escape' && searchBar.classList.contains('open')) closeSearch();
+    });
+
+    // ---- Drag-to-pan ----
+    const stage = document.querySelector('.page-stage');
+    let isDragging = false;
+    let dragStartX = 0, dragStartY = 0, scrollStartX = 0, scrollStartY = 0;
+
+    stage?.addEventListener('mousedown', (e) => {
+        // Don't hijack drags that start on selectable text — let the user select instead.
+        if (e.target.closest('.textLayer')) return;
+        isDragging = true;
+        stage.classList.add('dragging');
+        dragStartX = e.clientX;
+        dragStartY = e.clientY;
+        scrollStartX = stage.scrollLeft;
+        scrollStartY = stage.scrollTop;
+    });
+    window.addEventListener('mousemove', (e) => {
+        if (!isDragging) return;
+        e.preventDefault();
+        stage.scrollLeft = scrollStartX - (e.clientX - dragStartX);
+        stage.scrollTop = scrollStartY - (e.clientY - dragStartY);
+    });
+    window.addEventListener('mouseup', () => {
+        isDragging = false;
+        stage?.classList.remove('dragging');
+    });
+
+    // ---- Fullscreen toggle ----
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const readerBody = document.getElementById('readerBody');
+
+    fullscreenBtn?.addEventListener('click', async () => {
+        if (!document.fullscreenElement) {
+            await readerBody.requestFullscreen?.();
+        } else {
+            await document.exitFullscreen?.();
+        }
+    });
+    document.addEventListener('fullscreenchange', () => {
+        fullscreenBtn.classList.toggle('active', !!document.fullscreenElement);
+        setTimeout(() => renderPage(currentPage), 150);
+    });
+
+    // ---- Timer show/hide toggle ----
+    const toggleTimerBtn = document.getElementById('toggleTimerBtn');
+    toggleTimerBtn?.addEventListener('click', () => {
+        const hidden = readerBody.classList.toggle('timer-hidden');
+        toggleTimerBtn.classList.toggle('active', hidden);
+        setTimeout(() => renderPage(currentPage), 220);
+    });
+
+    // ---- Thumbnails show/hide toggle ----
+    const toggleThumbsBtn = document.getElementById('toggleThumbsBtn');
+    toggleThumbsBtn?.addEventListener('click', () => {
+        const hidden = readerBody.classList.toggle('thumbs-hidden');
+        toggleThumbsBtn.classList.toggle('active', hidden);
+        setTimeout(() => renderPage(currentPage), 220);
+    });
+
+    // ---- Thumbnail sidebar (lazy-rendered as they scroll into view) ----
+    const thumbPanel = document.getElementById('thumbPanel');
+    let thumbObserver = null;
+
+    function buildThumbnails(numPages) {
+        thumbPanel.innerHTML = "";
+        const frag = document.createDocumentFragment();
+        for (let n = 1; n <= numPages; n++) {
+            const item = document.createElement('div');
+            item.className = 'thumb-item';
+            item.dataset.page = n;
+            item.innerHTML = `<div class="thumb-placeholder"></div><div class="thumb-num">${n}</div>`;
+            item.addEventListener('click', () => {
+                currentPage = n;
+                renderPage(currentPage);
+            });
+            frag.appendChild(item);
+        }
+        thumbPanel.appendChild(frag);
+
+        thumbObserver = new IntersectionObserver((entries) => {
+            entries.forEach((entry) => {
+                if (entry.isIntersecting) renderThumb(entry.target);
+            });
+        }, { root: thumbPanel, rootMargin: '200px 0px' });
+
+        thumbPanel.querySelectorAll('.thumb-item').forEach((el) => thumbObserver.observe(el));
+        setActiveThumb(currentPage);
+    }
+
+    async function renderThumb(item) {
+        if (item.dataset.rendered) return;
+        item.dataset.rendered = "1";
+        const num = parseInt(item.dataset.page, 10);
+        const page = await pdfDoc.getPage(num);
+        const viewport = page.getViewport({ scale: 1 });
+        const scale = 150 / viewport.width;
+        const thumbViewport = page.getViewport({ scale });
+
+        const thumbCanvas = document.createElement('canvas');
+        thumbCanvas.width = thumbViewport.width;
+        thumbCanvas.height = thumbViewport.height;
+        const thumbCtx = thumbCanvas.getContext('2d');
+        await page.render({ canvasContext: thumbCtx, viewport: thumbViewport }).promise;
+
+        const placeholder = item.querySelector('.thumb-placeholder');
+        placeholder?.replaceWith(thumbCanvas);
+    }
+
+    function setActiveThumb(num) {
+        thumbPanel.querySelectorAll('.thumb-item').forEach((el) => {
+            el.classList.toggle('active', parseInt(el.dataset.page, 10) === num);
+        });
+        const active = thumbPanel.querySelector('.thumb-item.active');
+        active?.scrollIntoView({ block: 'nearest' });
+    }
+
+    // ---- Search ----
+    const searchBar = document.getElementById('searchBar');
+    const searchInput = document.getElementById('searchInput');
+    const searchStatus = document.getElementById('searchStatus');
+    const toggleSearchBtn = document.getElementById('toggleSearchBtn');
+    const searchPrevBtn = document.getElementById('searchPrevBtn');
+    const searchNextBtn = document.getElementById('searchNextBtn');
+    let activeQuery = "";
+
+    function openSearch() {
+        searchBar.classList.add('open');
+        toggleSearchBtn.classList.add('active');
+        searchInput.focus();
+    }
+    function closeSearch() {
+        searchBar.classList.remove('open');
+        toggleSearchBtn.classList.remove('active');
+        activeQuery = "";
+        searchStatus.textContent = "";
+        highlightSearchOnPage(currentPage);
+    }
+    toggleSearchBtn?.addEventListener('click', () => {
+        searchBar.classList.contains('open') ? closeSearch() : openSearch();
+    });
+
+    function pageTextString(textContent) {
+        return textContent.items.map(i => i.str).join(' ');
+    }
+
+    async function findMatchFrom(query, startPage, direction) {
+        if (!pdfDoc || !query) return null;
+        const total = pdfDoc.numPages;
+        for (let step = 1; step <= total; step++) {
+            const n = ((startPage - 1 + direction * step) % total + total) % total + 1;
+            const content = await getPageText(n);
+            if (pageTextString(content).toLowerCase().includes(query.toLowerCase())) {
+                return n;
+            }
+        }
+        return null;
+    }
+
+    async function runSearch(direction) {
+        const query = searchInput.value.trim();
+        if (!query) return;
+        activeQuery = query;
+        searchStatus.textContent = "Searching…";
+        const match = await findMatchFrom(query, currentPage, direction);
+        if (match) {
+            searchStatus.textContent = "Page " + match;
+            currentPage = match;
+            await renderPage(currentPage);
+        } else {
+            searchStatus.textContent = "No matches";
+        }
+    }
+
+    searchNextBtn?.addEventListener('click', () => runSearch(1));
+    searchPrevBtn?.addEventListener('click', () => runSearch(-1));
+    searchInput?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') runSearch(e.shiftKey ? -1 : 1);
+    });
+
+    function highlightSearchOnPage(num) {
+        if (!activeQuery) return;
+        const spans = textLayerDiv.querySelectorAll('span');
+        const q = activeQuery.toLowerCase();
+        spans.forEach((span) => {
+            const text = span.textContent;
+            const idx = text.toLowerCase().indexOf(q);
+            if (idx === -1) return;
+            span.innerHTML =
+                text.slice(0, idx) +
+                "<mark>" + text.slice(idx, idx + q.length) + "</mark>" +
+                text.slice(idx + q.length);
+        });
+    }
+
+    // ---- Reset progress ----
+    const resetBtn = document.getElementById('resetBtn');
+    resetBtn?.addEventListener('click', async () => {
+        const sure = confirm("Reset all progress on this book? This clears the page you're on, and today's + total reading time. This can't be undone.");
+        if (!sure) return;
+
+        try {
+            const res = await fetch("/reader/" + BOOK_ID + "/reset", { method: "POST" });
+            if (res.ok) {
+                window.location.reload();
+            } else {
+                alert("Couldn't reset progress — try again.");
+            }
+        } catch (err) {
+            alert("Couldn't reset progress — check your connection.");
+        }
+    });
+</script>
+
+<script>
+    // ---- Reading timer ----
+    // Counts seconds while this tab is visible/focused, pings the
+    // backend every 30s, and flushes the remainder on unload.
+    const BOOK_ID = {{ book.id | default('null') }};
+    const TRACK_URL = "/reader/" + BOOK_ID + "/track"; // TODO(backend): implement this route
+
+    let secondsSinceLastPing = 0;
+    let baseSecondsToday = {{ (book.seconds_today | default(0)) }};
+    let baseSecondsTotal = {{ (book.seconds_spent | default(0)) }};
+    let isVisible = !document.hidden;
+
+    const todayValueEl = document.getElementById('todayValue');
+    const totalValueEl = document.getElementById('totalValue');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+
+    function formatDuration(totalSeconds) {
+        const h = Math.floor(totalSeconds / 3600);
+        const m = Math.floor((totalSeconds % 3600) / 60);
+        const s = Math.floor(totalSeconds % 60);
+        if (h > 0) {
+            return h + ":" + String(m).padStart(2, '0') + ":" + String(s).padStart(2, '0');
+        }
+        return m + ":" + String(s).padStart(2, '0');
+    }
+
+    function tick() {
+        if (!isVisible) return;
+        secondsSinceLastPing += 1;
+
+        // Optimistic local display — the real numbers get reconciled
+        // whenever a ping response comes back from the server.
+        todayValueEl.textContent = formatDuration(baseSecondsToday + secondsSinceLastPing);
+        totalValueEl.textContent = formatDuration(baseSecondsTotal + secondsSinceLastPing);
+    }
+
+    function sendPing(useBeacon = false) {
+        if (secondsSinceLastPing <= 0 || !BOOK_ID) return;
+        const payload = JSON.stringify({ seconds: secondsSinceLastPing });
+
+        if (useBeacon && navigator.sendBeacon) {
+            navigator.sendBeacon(TRACK_URL, new Blob([payload], { type: 'application/json' }));
+        } else {
+            fetch(TRACK_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: payload,
+                keepalive: true,
+            }).then(res => res.json()).then(data => {
+                if (data && typeof data.minutes_today === 'number') {
+                    baseSecondsToday = data.minutes_today * 60;
+                    baseSecondsTotal = data.minutes_spent * 60;
+                }
+            }).catch(() => { /* offline or route not built yet — ignore for now */ });
+        }
+        secondsSinceLastPing = 0;
+    }
+
+    document.addEventListener('visibilitychange', () => {
+        isVisible = !document.hidden;
+        statusDot.classList.toggle('paused', !isVisible);
+        statusText.textContent = isVisible ? 'Tracking time' : 'Paused (tab hidden)';
+        if (!isVisible) sendPing();
+    });
+
+    window.addEventListener('beforeunload', () => sendPing(true));
+
+    setInterval(tick, 1000);
+    setInterval(() => sendPing(), 30000);
+</script>
 
 </body>
 </html>
