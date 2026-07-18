@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS quests(
     description VARCHAR(255) NOT NULL,
     goal_type VARCHAR(50),
     goal_amount INT,
+    assigned_date DATE DEFAULT CURRENT_DATE,
     progress INT DEFAULT 0,
     xp_reward INT DEFAULT 0,
     coin_reward INT DEFAULT 0,

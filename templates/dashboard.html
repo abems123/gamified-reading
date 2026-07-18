@@ -448,83 +448,6 @@
 </head>
 <body>
 
-<!--
-    ================================================================
-    BACKEND TODO — read this before wiring app.py to this template
-    ================================================================
-    This file is pure front-end. Every dynamic value below is written
-    as a Jinja variable with a sensible fallback via `default(...)`,
-    so the page renders fine even before the backend exists. Replace
-    the fallbacks by passing real data from your /dashboard route.
-
-    1. Protect this route with your login_required check/decorator
-       (session["user_id"] must exist, else redirect to /login).
-
-    2. Query the logged-in user's row from `users` and pass a dict/
-       object called `user` with: full_name, username, level, coins,
-       total_xp, todays_xp, uploaded_books, membership.
-
-    3. Compute XP-bar progress server-side (don't hardcode 45%):
-       - Decide your XP-per-level curve (e.g. level*500 xp to next level).
-       - Pass `xp_into_level` and `xp_needed_for_level` so the template
-         can render the percentage and the "X / Y XP" label.
-
-    4. Query the user's streak + coins for the streak card:
-       - `streak_days` (int)
-       - `streak_freeze_available` (bool) — whether they own a freeze
-         they could use/buy, to decide if you show that action.
-
-    5. Query the user's most recently read book (highest updated_at or
-       a `last_read_at` column you add to `books`) for the "Continue
-       Reading" card. Pass `current_book` with: title, current_page,
-       total_pages, minutes_read. Compute `book_pct` server-side as
-       round(current_page / total_pages * 100).
-
-    6. Query all of the user's other uploaded books for the library
-       grid — pass a list `books` (excluding the current_book, or
-       include it and just style differently, your call).
-
-    7. Enforce membership limits here, not just in the UI:
-       - Look up `membership` tier + count of `uploaded_books`.
-       - Pass `can_upload` (bool) so the upload card can be disabled
-         or link to /upload. The disabled state is already styled
-         (.upload-card gets a "limit reached" message) — just feed it
-         the real boolean and limit numbers (`upload_limit`).
-       - IMPORTANT: even though the button will be disabled client-side,
-         you must ALSO check the limit again inside your /upload route
-         handler, since a user could hit that endpoint directly.
-
-    8. Query 2–3 active quests for this user from a `quests` table you
-       still need to design (columns like: id, user_id, description,
-       goal_type, goal_amount, progress, xp_reward, coin_reward,
-       completed). Pass a list `quests`.
-
-    9. Query the top 5 leaderboard rows (weekly or all-time — you have
-       both per the proposal) plus the current user's own rank, even
-       if they're outside the top 5. Pass `leaderboard` (list of dicts
-       with rank, name, score) and make sure to flag whichever row
-       belongs to the logged-in user so it highlights (see `lb-row`
-       "me" classes already wired in the HTML below).
-
-    10. Wire up the flash-message block near the top of <body> — it
-        already loops over get_flashed_messages(with_categories=true),
-        matching the pattern from your login/signup pages.
-
-    11. The "Start reading" / "Continue" / "Upload" / quest links
-        currently point at placeholder hrefs (#). Swap these for
-        url_for(...) calls once those routes exist:
-        - /reader/<book_id>
-        - /upload
-        - /leaderboard
-        - /quests
-        - /profile
-
-    Everything else (all CSS, layout, responsiveness, the XP ribbon
-    animation) is done — you shouldn't need to touch styling to wire
-    the backend in.
-    ================================================================
--->
-
 <nav class="topnav">
     <div class="brand">
         <span class="brand-mark">
@@ -539,8 +462,8 @@
     <div class="navlinks">
         <a href="#" class="active">Dashboard</a>
         <a href="#">Leaderboard</a>
-        <a href="#">Quests</a>
         <a href="#">Profile</a>
+        <a href="#">Upgrade</a>
     </div>
     <div class="navright">
         <span class="membership-pill">{{ user.membership | default('Free') }}</span>
@@ -686,6 +609,9 @@
                     <h2 style="font-size:1.05rem;">Today's quests</h2>
                     <span class="link">See all</span>
                 </div>
+                {% if quests_done_for_today %}
+                    <p class="quests-complete">You've finished all your quests for today — new ones tomorrow!</p>
+                {% else %}
                 {% for quest in quests | default([
                     {'description': 'Read for 20 minutes', 'sub': '12 / 20 min', 'xp_reward': 40, 'coin_reward': 0},
                     {'description': 'Finish 2 chapters', 'sub': '1 / 2 chapters', 'xp_reward': 0, 'coin_reward': 25},
@@ -701,6 +627,7 @@
                     </div>
                 </div>
                 {% endfor %}
+                {% endif %}
             </div>
 
             <!-- Leaderboard preview -->

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import random
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
 from models.user import User
@@ -63,9 +64,8 @@ def track_reading(book_id):
         )
     conn.commit()
 
-    # response uses "minutes_today"/"minutes_spent" keys to match the JS's
-    # existing reconciliation code, but the values are minutes (float) —
-    # the JS converts back to seconds for its internal counters.
+    update_quest_progress(conn, user_id, "seconds", int(seconds))
+
     return jsonify({
         "minutes_today": seconds_today / 60,
         "minutes_spent": seconds_spent / 60,
@@ -83,6 +83,20 @@ def save_reading_page(book_id):
         return jsonify({"error": "invalid page"}), 400
 
     conn = db.get_db()
+
+    # Need the previous read_pages to compute how many *new* pages were turned
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT read_pages FROM books WHERE id = %s AND user_id = %s",
+            (book_id, user_id),
+        )
+        book = cur.fetchone()
+
+    if book is None:
+        return jsonify({"error": "not found"}), 404
+
+    pages_advanced = page - book["read_pages"]
+
     with conn.cursor() as cur:
         cur.execute(
             "UPDATE books SET read_pages = %s WHERE id = %s AND user_id = %s",
@@ -90,7 +104,103 @@ def save_reading_page(book_id):
         )
     conn.commit()
 
+    if pages_advanced > 0:
+        update_quest_progress(conn, user_id, "pages", pages_advanced)
+
     return jsonify({"read_pages": page})
+
+BASE_LEVEL_XP = 100  # level 0→1 needs this much; each level after doubles
+
+def compute_level(total_xp):
+    """Given all-time XP, return (level, xp_into_current_level, xp_needed_for_next)."""
+    level = 0
+    threshold = BASE_LEVEL_XP
+    remaining = total_xp
+    while remaining >= threshold:
+        remaining -= threshold
+        level += 1
+        threshold *= 2
+    return level, remaining, threshold
+
+
+def award_xp_and_coins(conn, user_id, xp_reward, coin_reward):
+    with conn.cursor() as cur:
+        cur.execute("SELECT total_xp, todays_xp, coins FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+
+    new_total_xp = user["total_xp"] + xp_reward
+    new_todays_xp = user["todays_xp"] + xp_reward
+    new_coins = user["coins"] + coin_reward
+    new_level, _, _ = compute_level(new_total_xp)
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE users SET total_xp = %s, todays_xp = %s, coins = %s, level = %s WHERE id = %s",
+            (new_total_xp, new_todays_xp, new_coins, new_level, user_id),
+        )
+
+
+QUEST_TEMPLATES = [
+    {"description": "Read for 10 minutes",  "goal_type": "seconds", "goal_amount": 600,  "xp_reward": 40, "coin_reward": 10},
+    {"description": "Read for 20 minutes",  "goal_type": "seconds", "goal_amount": 1200, "xp_reward": 80, "coin_reward": 20},
+    {"description": "Read for 30 minutes",  "goal_type": "seconds", "goal_amount": 1800, "xp_reward": 120, "coin_reward": 30},
+    {"description": "Read for 40 minutes",  "goal_type": "seconds", "goal_amount": 2400, "xp_reward": 160, "coin_reward": 40},
+    {"description": "Read for 50 minutes",  "goal_type": "seconds", "goal_amount": 3000, "xp_reward": 200, "coin_reward": 50},
+    {"description": "Read for one hour",  "goal_type": "seconds", "goal_amount": 3600, "xp_reward": 240, "coin_reward": 60},
+    {"description": "Turn 15 pages",        "goal_type": "pages",   "goal_amount": 15,   "xp_reward": 30, "coin_reward": 15},
+    {"description": "Turn 30 pages",        "goal_type": "pages",   "goal_amount": 30,   "xp_reward": 60, "coin_reward": 25},
+]
+
+
+def generate_quests_if_needed(conn, user_id):
+    today = date.today()
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT COUNT(*) AS c FROM quests WHERE user_id = %s AND assigned_date = %s",
+            (user_id, today),
+        )
+        existing_today = cur.fetchone()["c"]
+
+    if existing_today > 0:
+        return  # already have (or already finished) today's quests — don't touch them
+
+    chosen = random.sample(QUEST_TEMPLATES, k=min(3, len(QUEST_TEMPLATES)))
+    with conn.cursor() as cur:
+        for q in chosen:
+            cur.execute(
+                """
+                INSERT INTO quests (user_id, description, goal_type, goal_amount, xp_reward, coin_reward, assigned_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (user_id, q["description"], q["goal_type"], q["goal_amount"], q["xp_reward"], q["coin_reward"], today),
+            )
+    conn.commit()
+
+
+def update_quest_progress(conn, user_id, goal_type, amount):
+    if amount <= 0:
+        return
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, progress, goal_amount, xp_reward, coin_reward FROM quests WHERE user_id = %s AND goal_type = %s AND completed = FALSE",
+            (user_id, goal_type),
+        )
+        quests = cur.fetchall()
+
+    for q in quests:
+        new_progress = min(q["progress"] + amount, q["goal_amount"])
+        completed = new_progress >= q["goal_amount"]
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE quests SET progress = %s, completed = %s WHERE id = %s",
+                (new_progress, completed, q["id"]),
+            )
+        if completed:
+            award_xp_and_coins(conn, user_id, q["xp_reward"], q["coin_reward"])
+
+    conn.commit()
 
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
@@ -324,10 +434,33 @@ def dashboard():
         session.clear()
         return redirect(url_for("login"))
 
-    # --- XP -> level progress ---
-    xp_into_level = user["total_xp"] % LEVEL_XP_STEP
+    # --- XP -> level progress (doubling curve) ---
     xp_needed_for_level = LEVEL_XP_STEP
+    level, xp_into_level, xp_needed_for_level = compute_level(user["total_xp"])
     xp_percent = round((xp_into_level / xp_needed_for_level) * 100)
+    user["level"] = level  # keep the template's user.level display in sync
+
+    # --- Quests ---
+    generate_quests_if_needed(conn, user_id)
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT description, progress, goal_amount, goal_type, xp_reward, coin_reward, completed
+            FROM quests
+            WHERE user_id = %s AND assigned_date = %s
+            ORDER BY id
+            """,
+            (user_id, date.today()),
+        )
+        quests = cur.fetchall()
+
+    quests_done_for_today = len(quests) > 0 and all(q["completed"] for q in quests)
+
+    for q in quests:
+        if q["goal_type"] == "seconds":
+            q["sub"] = f"{q['progress'] // 60} / {q['goal_amount'] // 60} min"
+        else:
+            q["sub"] = f"{q['progress']} / {q['goal_amount']} pages"
 
     # --- Membership / upload limits ---
     membership = user["membership"] or "free"
@@ -386,6 +519,7 @@ def dashboard():
         streak_freeze_available=user["streak_freeze_available"] or False,
         xp_into_level=xp_into_level,
         xp_needed_for_level=xp_needed_for_level,
+        quests_done_for_today=quests_done_for_today,
         xp_percent=xp_percent,
         current_book=current_book,
         book_pct=book_pct,
