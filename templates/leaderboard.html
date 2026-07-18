@@ -1,0 +1,337 @@
+{% extends "base.html" %}
+{% block title %}Leaderboard · Chapters{% endblock %}
+
+{% block extra_style %}
+<style>
+    /* Reuses the design tokens defined in base.html:
+       --ink, --surface, --surface-2, --paper, --paper-dim,
+       --amber, --amber-dim, --ember, --moss, --line, --radius */
+
+    :root{
+        --silver: color-mix(in srgb, var(--paper) 60%, var(--paper-dim) 40%);
+        --bronze: color-mix(in srgb, var(--amber) 55%, var(--ember) 45%);
+    }
+
+    .page-head{
+        margin-bottom: 2rem;
+    }
+    .page-head .eyebrow{
+        font-size: 0.78rem;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--paper-dim);
+        margin-bottom: 0.4rem;
+    }
+    .page-head h1{
+        font-size: 2rem;
+    }
+    .page-head .sub{
+        margin-top: 0.5rem;
+        font-size: 0.92rem;
+        color: var(--paper-dim);
+        max-width: 52ch;
+    }
+
+    /* ============ Podium ============ */
+    .podium{
+        display: flex;
+        align-items: flex-end;
+        justify-content: center;
+        gap: 1.25rem;
+        margin-bottom: 2.75rem;
+        padding: 0 1rem;
+    }
+
+    .podium-slot{
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        width: 200px;
+        opacity: 0;
+        transform: translateY(16px);
+        animation: podium-rise .55s cubic-bezier(.2,.7,.2,1) forwards;
+    }
+    .podium-slot[data-place="1"]{ order: 2; width: 220px; animation-delay: .05s; }
+    .podium-slot[data-place="2"]{ order: 1; animation-delay: .15s; }
+    .podium-slot[data-place="3"]{ order: 3; animation-delay: .25s; }
+
+    .podium-card{
+        width: 100%;
+        background: linear-gradient(160deg, var(--surface-2), var(--surface));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.5rem 1.1rem 1.3rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        text-align: center;
+        position: relative;
+        margin-bottom: -1px;
+    }
+    .podium-slot[data-place="1"] .podium-card{
+        border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 25%, transparent), 0 20px 40px -20px rgba(227,168,75,0.35);
+    }
+
+    .crown{
+        position: absolute;
+        top: -22px;
+        width: 34px;
+        height: 34px;
+    }
+
+    .podium-avatar{
+        width: 64px;
+        height: 64px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Fraunces', serif;
+        font-weight: 600;
+        font-size: 1.5rem;
+        margin-bottom: 0.85rem;
+        color: var(--ink);
+    }
+    .podium-slot[data-place="1"] .podium-avatar{
+        width: 76px; height: 76px; font-size: 1.8rem;
+        background: linear-gradient(150deg, color-mix(in srgb, var(--amber) 92%, white 8%), var(--amber-dim));
+        box-shadow: 0 8px 20px -6px rgba(227,168,75,0.55);
+    }
+    .podium-slot[data-place="2"] .podium-avatar{
+        background: linear-gradient(150deg, color-mix(in srgb, var(--silver) 90%, white 10%), var(--silver));
+    }
+    .podium-slot[data-place="3"] .podium-avatar{
+        background: linear-gradient(150deg, color-mix(in srgb, var(--bronze) 90%, white 8%), var(--bronze));
+    }
+
+    .podium-name{
+        font-weight: 600;
+        font-size: 0.98rem;
+        margin-bottom: 0.2rem;
+        max-width: 100%;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .podium-slot[data-place="1"] .podium-name{ font-size: 1.1rem; }
+
+    .podium-score{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        color: var(--paper-dim);
+    }
+    .podium-slot[data-place="1"] .podium-score{ color: var(--amber); font-weight: 600; }
+
+    .podium-you{
+        margin-top: 0.6rem;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--ink);
+        background: var(--amber);
+        padding: 0.2rem 0.55rem;
+        border-radius: 100px;
+    }
+
+    .podium-base{
+        width: 100%;
+        border-radius: 0 0 8px 8px;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 0.6rem;
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 1.6rem;
+    }
+    .podium-slot[data-place="1"] .podium-base{
+        height: 96px;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--amber) 22%, var(--surface)), var(--surface));
+        color: var(--amber);
+        border: 1px solid color-mix(in srgb, var(--amber) 30%, var(--line));
+        border-top: none;
+    }
+    .podium-slot[data-place="2"] .podium-base{
+        height: 68px;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--silver) 16%, var(--surface)), var(--surface));
+        color: var(--silver);
+        border: 1px solid var(--line);
+        border-top: none;
+    }
+    .podium-slot[data-place="3"] .podium-base{
+        height: 48px;
+        background: linear-gradient(180deg, color-mix(in srgb, var(--bronze) 16%, var(--surface)), var(--surface));
+        color: var(--bronze);
+        border: 1px solid var(--line);
+        border-top: none;
+    }
+
+    @keyframes podium-rise{
+        to{ opacity: 1; transform: translateY(0); }
+    }
+    @media (prefers-reduced-motion: reduce){
+        .podium-slot{ animation: none; opacity: 1; transform: none; }
+    }
+
+    /* ============ Full ranking list ============ */
+    .lb-panel{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 0.5rem 0;
+    }
+    .lb-panel-head{
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 1rem 1.5rem 0.6rem;
+    }
+    .lb-panel-head h2{ font-size: 1.05rem; }
+    .lb-panel-head span{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.75rem;
+        color: var(--paper-dim);
+    }
+
+    .lb-full-row{
+        display: grid;
+        grid-template-columns: 36px 34px 1fr auto;
+        align-items: center;
+        gap: 0.9rem;
+        padding: 0.75rem 1.5rem;
+        border-top: 1px solid var(--line);
+        transition: background .15s ease;
+    }
+    .lb-full-row:hover{ background: rgba(244,239,228,0.03); }
+    .lb-full-row.me{
+        background: color-mix(in srgb, var(--amber) 10%, transparent);
+        position: relative;
+    }
+    .lb-full-row.me::before{
+        content: "YOU";
+        position: absolute;
+        left: 0; top: 0; bottom: 0;
+        width: 3px;
+        background: var(--amber);
+    }
+
+    .lb-full-rank{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.82rem;
+        color: var(--paper-dim);
+        text-align: center;
+    }
+    .lb-full-avatar{
+        width: 30px; height: 30px;
+        border-radius: 50%;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        display: flex; align-items: center; justify-content: center;
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.72rem;
+        font-weight: 600;
+    }
+    .lb-full-name{
+        font-size: 0.92rem;
+        font-weight: 500;
+    }
+    .lb-full-name .you-tag{
+        margin-left: 0.5rem;
+        font-size: 0.68rem;
+        color: var(--amber);
+        font-weight: 700;
+    }
+    .lb-full-score{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.88rem;
+        font-weight: 600;
+        color: var(--amber);
+        text-align: right;
+    }
+
+    .lb-empty{
+        text-align: center;
+        padding: 3rem 1.5rem;
+        color: var(--paper-dim);
+    }
+    .lb-empty strong{
+        display: block;
+        font-family: 'Fraunces', serif;
+        font-size: 1.2rem;
+        color: var(--paper);
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+    }
+
+    @media (max-width: 620px){
+        .podium{ gap: 0.6rem; }
+        .podium-slot{ width: 30%; }
+        .podium-slot[data-place="1"]{ width: 34%; }
+        .podium-avatar{ width: 48px; height: 48px; font-size: 1.1rem; }
+        .podium-slot[data-place="1"] .podium-avatar{ width: 58px; height: 58px; font-size: 1.3rem; }
+        .podium-name{ font-size: 0.82rem; }
+        .lb-full-row{ padding: 0.7rem 1rem; gap: 0.6rem; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-head">
+    <div class="eyebrow">Chapters · This week</div>
+    <h1>Leaderboard</h1>
+    <p class="sub">Ranked by total reading XP. Keep turning pages to climb.</p>
+</div>
+
+{% if leaderboard and leaderboard|length > 0 %}
+
+<div class="podium">
+    {% for row in leaderboard[:3] %}
+    <div class="podium-slot" data-place="{{ row.rank }}">
+        {% if row.rank == 1 %}
+        <svg class="crown" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M3 8l4 4 5-7 5 7 4-4-2 10H5L3 8Z" fill="#E3A84B"/>
+        </svg>
+        {% endif %}
+        <div class="podium-card">
+            <div class="podium-avatar">{{ row.name[0]|upper }}</div>
+            <div class="podium-name">{{ row.name }}</div>
+            <div class="podium-score">{{ row.score }} XP</div>
+            {% if row.is_me %}<span class="podium-you">You</span>{% endif %}
+        </div>
+        <div class="podium-base">{{ row.rank }}</div>
+    </div>
+    {% endfor %}
+</div>
+
+<div class="lb-panel">
+    <div class="lb-panel-head">
+        <h2>Full ranking</h2>
+        <span>{{ leaderboard|length }} reader{{ 's' if leaderboard|length != 1 else '' }}</span>
+    </div>
+    {% for row in leaderboard %}
+    <div class="lb-full-row {{ 'me' if row.is_me else '' }}">
+        <span class="lb-full-rank">{{ row.rank }}</span>
+        <span class="lb-full-avatar">{{ row.name[0]|upper }}</span>
+        <span class="lb-full-name">
+            {{ row.name }}{% if row.is_me %}<span class="you-tag">YOU</span>{% endif %}
+        </span>
+        <span class="lb-full-score">{{ row.score }}</span>
+    </div>
+    {% endfor %}
+</div>
+
+{% else %}
+
+<div class="lb-panel">
+    <div class="lb-empty">
+        <strong>No one's on the board yet.</strong>
+        Read a chapter today and take the top spot.
+    </div>
+</div>
+
+{% endif %}
+
+{% endblock %}

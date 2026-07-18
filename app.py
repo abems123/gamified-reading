@@ -18,6 +18,18 @@ app = Flask(__name__)
 app.secret_key = os.getenv("SECRET_KEY")
 db.init_app(app)
 
+@app.context_processor
+def inject_user():
+    if "user_id" not in session:
+        return {"user": None}
+
+    conn = db.get_db()
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM users WHERE id = %s", (session["user_id"],))
+        user = cur.fetchone()
+
+    return {"user": user}
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -138,7 +150,14 @@ def award_xp_and_coins(conn, user_id, xp_reward, coin_reward):
             "UPDATE users SET total_xp = %s, todays_xp = %s, coins = %s, level = %s WHERE id = %s",
             (new_total_xp, new_todays_xp, new_coins, new_level, user_id),
         )
-
+        cur.execute(
+            """
+            INSERT INTO leaderboard (user_id, score)
+            VALUES (%s, %s)
+            ON CONFLICT (user_id) DO UPDATE SET score = EXCLUDED.score
+            """,
+            (user_id, new_total_xp),
+        )
 
 QUEST_TEMPLATES = [
     {"description": "Read for 10 minutes",  "goal_type": "seconds", "goal_amount": 600,  "xp_reward": 40, "coin_reward": 10},
@@ -201,6 +220,32 @@ def update_quest_progress(conn, user_id, goal_type, amount):
             award_xp_and_coins(conn, user_id, q["xp_reward"], q["coin_reward"])
 
     conn.commit()
+
+@app.route("/leaderboard")
+@login_required
+def leaderboard_page():
+    conn = db.get_db()
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT u.username AS name, l.score,
+                    RANK() OVER (ORDER BY l.score DESC) AS rank
+            FROM leaderboard l
+            JOIN users u ON u.id = l.user_id
+            ORDER BY l.score DESC
+            """
+        )
+        leaderboard = cur.fetchall()
+
+    user_id = session["user_id"]
+    with conn.cursor() as cur:
+        cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        me = cur.fetchone()
+
+    for row in leaderboard:
+        row["is_me"] = row["name"] == me["username"]
+
+    return render_template("leaderboard.html", leaderboard=leaderboard)
 
 @app.route("/upload", methods=["GET", "POST"])
 @login_required
@@ -394,6 +439,8 @@ def signup():
 
             id = cur.fetchone()['id']
             cur.execute("INSERT INTO streaks (id, days, streak_freeze_available) VALUES (%s, %s, %s)", (id, 0, False))
+            cur.execute("INSERT INTO leaderboard (user_id, score) VALUES (%s, %s)", (id, 0))   # <-- add this
+
         conn.commit()
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
@@ -441,7 +488,10 @@ def dashboard():
     user["level"] = level  # keep the template's user.level display in sync
 
     # --- Quests ---
+    today = date.today()
+
     generate_quests_if_needed(conn, user_id)
+
     with conn.cursor() as cur:
         cur.execute(
             """
@@ -450,7 +500,7 @@ def dashboard():
             WHERE user_id = %s AND assigned_date = %s
             ORDER BY id
             """,
-            (user_id, date.today()),
+            (user_id, today),
         )
         quests = cur.fetchall()
 
@@ -461,6 +511,7 @@ def dashboard():
             q["sub"] = f"{q['progress'] // 60} / {q['goal_amount'] // 60} min"
         else:
             q["sub"] = f"{q['progress']} / {q['goal_amount']} pages"
+
 
     # --- Membership / upload limits ---
     membership = user["membership"] or "free"
@@ -529,6 +580,52 @@ def dashboard():
         quests=quests,
         leaderboard=leaderboard,
     )
+
+@app.route("/quests/reset", methods=["POST"])
+@login_required
+def reset_quests():
+    user_id = session["user_id"]
+    conn = db.get_db()
+    today = date.today()
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT id, description FROM quests WHERE user_id = %s AND assigned_date = %s AND completed = FALSE",
+            (user_id, today),
+        )
+        active_quests = cur.fetchall()
+
+    if not active_quests:
+        return jsonify({"error": "No active quests to reset"}), 400
+
+    # Avoid handing back a quest that's already active or already completed today
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT description FROM quests WHERE user_id = %s AND assigned_date = %s",
+            (user_id, today),
+        )
+        today_descriptions = {row["description"] for row in cur.fetchall()}
+
+    fresh_templates = [q for q in QUEST_TEMPLATES if q["description"] not in today_descriptions]
+
+    needed = len(active_quests)
+    pool = fresh_templates if len(fresh_templates) >= needed else QUEST_TEMPLATES
+    chosen = random.sample(pool, k=min(needed, len(pool)))
+
+    with conn.cursor() as cur:
+        active_ids = [q["id"] for q in active_quests]
+        cur.execute("DELETE FROM quests WHERE id = ANY(%s)", (active_ids,))
+        for q in chosen:
+            cur.execute(
+                """
+                INSERT INTO quests (user_id, description, goal_type, goal_amount, xp_reward, coin_reward, assigned_date)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                """,
+                (user_id, q["description"], q["goal_type"], q["goal_amount"], q["xp_reward"], q["coin_reward"], today),
+            )
+    conn.commit()
+
+    return jsonify({"success": True})
 
 @app.route("/reader/<int:book_id>/reset", methods=["POST"])
 @login_required
