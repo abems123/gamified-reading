@@ -191,6 +191,7 @@
         line-height: 1;
         opacity: 1;
         user-select: text;
+        pointer-events: none; /* let clicks pass through to the canvas below by default */
     }
     .textLayer span {
         color: transparent;
@@ -199,6 +200,7 @@
         white-space: pre;
         cursor: text;
         transform-origin: 0% 0%;
+        pointer-events: auto; /* ...except when actually over a character, so selection still works */
     }
     .textLayer mark {
         background: rgba(227,168,75,0.55);
@@ -462,8 +464,8 @@
         return content;
     }
 
-    // ---- Render current page: crisp (device-pixel-ratio aware) + real
-    // selectable text layer on top for copy/search ----
+    // ---- Render current page: crisp (forced-minimum supersampling) +
+    // real selectable text layer on top for copy/search ----
     async function renderPage(num) {
         if (!pdfDoc || renderInProgress) return;
         renderInProgress = true;
@@ -479,14 +481,38 @@
         );
         const viewport = page.getViewport({ scale: fitScale * zoomLevel });
 
-        // Render the canvas at real device-pixel density so it's crisp
-        // on retina/high-DPI screens, then scale it back down with CSS.
-        const outputScale = window.devicePixelRatio || 1;
-        canvas.width = Math.floor(viewport.width * outputScale);
-        canvas.height = Math.floor(viewport.height * outputScale);
+        // Render the canvas at real device-pixel density, forced to at
+        // least 2x even on standard (non-Retina) displays — this is
+        // what makes text crisp like a native PDF viewer instead of
+        // just matching whatever the screen's DPR happens to be.
+        // Capped by longest side so large pages at high zoom don't
+        // blow up canvas memory. Raised from 4096 to 6000 to keep pace
+        // with the higher max zoom level below.
+        const rawScale = window.devicePixelRatio || 1;
+        const outputScale = Math.max(rawScale, 2);
+
+        let pixelWidth = viewport.width * outputScale;
+        let pixelHeight = viewport.height * outputScale;
+        const longestSide = Math.max(pixelWidth, pixelHeight);
+        const MAX_CANVAS_SIDE = 6000;
+        if (longestSide > MAX_CANVAS_SIDE) {
+            const capFactor = MAX_CANVAS_SIDE / longestSide;
+            pixelWidth *= capFactor;
+            pixelHeight *= capFactor;
+        }
+
+        canvas.width = Math.floor(pixelWidth);
+        canvas.height = Math.floor(pixelHeight);
         canvas.style.width = Math.floor(viewport.width) + "px";
         canvas.style.height = Math.floor(viewport.height) + "px";
-        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : undefined;
+
+        // Use the *actual* resulting scale (post-cap) so the render
+        // transform always matches the real canvas buffer size exactly.
+        const finalScale = canvas.width / viewport.width;
+        const transform = finalScale !== 1 ? [finalScale, 0, 0, finalScale, 0, 0] : undefined;
+
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
 
         await page.render({ canvasContext: ctx, viewport, transform }).promise;
 
@@ -514,7 +540,7 @@
         prevBtn.disabled = num <= 1;
         nextBtn.disabled = num >= pdfDoc.numPages;
         zoomOutBtn.disabled = zoomLevel <= 0.5;
-        zoomInBtn.disabled = zoomLevel >= 3;
+        zoomInBtn.disabled = zoomLevel >= 5;
         renderInProgress = false;
 
         savePage(num);
@@ -552,13 +578,37 @@
     nextBtn?.addEventListener('click', () => {
         if (pdfDoc && currentPage < pdfDoc.numPages) { currentPage += 1; renderPage(currentPage); }
     });
-    zoomInBtn?.addEventListener('click', () => {
-        zoomLevel = Math.min(3, Math.round((zoomLevel + 0.15) * 100) / 100);
-        renderPage(currentPage);
+    // Capture where the viewer is centered (as a 0–1 ratio of the
+    // scrollable area) so zooming in/out doesn't jump back to the
+    // top-left corner of the page.
+    function captureScrollCenter() {
+        const stageEl = document.querySelector('.page-stage');
+        return {
+            xRatio: stageEl.scrollWidth > stageEl.clientWidth
+                ? (stageEl.scrollLeft + stageEl.clientWidth / 2) / stageEl.scrollWidth
+                : 0.5,
+            yRatio: stageEl.scrollHeight > stageEl.clientHeight
+                ? (stageEl.scrollTop + stageEl.clientHeight / 2) / stageEl.scrollHeight
+                : 0.5,
+        };
+    }
+    function restoreScrollCenter(ratio) {
+        const stageEl = document.querySelector('.page-stage');
+        stageEl.scrollLeft = ratio.xRatio * stageEl.scrollWidth - stageEl.clientWidth / 2;
+        stageEl.scrollTop = ratio.yRatio * stageEl.scrollHeight - stageEl.clientHeight / 2;
+    }
+
+    zoomInBtn?.addEventListener('click', async () => {
+        const center = captureScrollCenter();
+        zoomLevel = Math.min(5, Math.round((zoomLevel + 0.15) * 100) / 100);
+        await renderPage(currentPage);
+        restoreScrollCenter(center);
     });
-    zoomOutBtn?.addEventListener('click', () => {
+    zoomOutBtn?.addEventListener('click', async () => {
+        const center = captureScrollCenter();
         zoomLevel = Math.max(0.5, Math.round((zoomLevel - 0.15) * 100) / 100);
-        renderPage(currentPage);
+        await renderPage(currentPage);
+        restoreScrollCenter(center);
     });
 
     // Keyboard shortcuts — arrows to navigate, Ctrl/Cmd+F to search, Esc to close it.

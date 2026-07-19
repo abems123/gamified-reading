@@ -530,8 +530,8 @@ def dashboard():
         all_books_list = cur.fetchall()
 
     current_book = all_books_list[0] if all_books_list else None
-    books = all_books_list[1:4] if all_books_list else []   # cap the dashboard grid at 4
-    has_more_books = len(all_books_list) > 5                 # true if there's anything beyond current + 4
+    books = all_books_list[1:4] if all_books_list else []
+    has_more_books = len(all_books_list) > 5                 
 
     book_pct = 0
     if current_book and current_book["pages"]:
