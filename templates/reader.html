@@ -578,9 +578,7 @@
     nextBtn?.addEventListener('click', () => {
         if (pdfDoc && currentPage < pdfDoc.numPages) { currentPage += 1; renderPage(currentPage); }
     });
-    // Capture where the viewer is centered (as a 0–1 ratio of the
-    // scrollable area) so zooming in/out doesn't jump back to the
-    // top-left corner of the page.
+
     function captureScrollCenter() {
         const stageEl = document.querySelector('.page-stage');
         return {
@@ -681,7 +679,7 @@
         setTimeout(() => renderPage(currentPage), 220);
     });
 
-    // ---- Thumbnail sidebar (lazy-rendered as they scroll into view) ----
+    // ---- Thumbnail sidebar ----
     const thumbPanel = document.getElementById('thumbPanel');
     let thumbObserver = null;
 
@@ -866,8 +864,6 @@
         if (!isVisible) return;
         secondsSinceLastPing += 1;
 
-        // Optimistic local display — the real numbers get reconciled
-        // whenever a ping response comes back from the server.
         todayValueEl.textContent = formatDuration(baseSecondsToday + secondsSinceLastPing);
         totalValueEl.textContent = formatDuration(baseSecondsTotal + secondsSinceLastPing);
     }
