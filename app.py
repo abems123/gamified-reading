@@ -126,7 +126,7 @@ def save_reading_page(book_id):
 
     return jsonify({"read_pages": page})
 
-BASE_LEVEL_XP = 100  # level 0→1 needs this much; each level after doubles
+BASE_LEVEL_XP = 100 
 
 def compute_level(total_xp):
     """Given all-time XP, return (level, xp_into_current_level, xp_needed_for_next)."""
@@ -187,7 +187,7 @@ def generate_quests_if_needed(conn, user_id):
         existing_today = cur.fetchone()["c"]
 
     if existing_today > 0:
-        return  # already have (or already finished) today's quests — don't touch them
+        return  # already have (or already finished) today's quests
 
     chosen = random.sample(QUEST_TEMPLATES, k=min(3, len(QUEST_TEMPLATES)))
     with conn.cursor() as cur:
@@ -272,21 +272,21 @@ def upload():
             can_upload=user["uploaded_books"] < limit,
         )
 
-    # --- Enforce the limit server-side, not just in the UI ---
+    # --- Enforce the limit ---
     if user["uploaded_books"] >= limit:
-        flash("You've reached your upload limit for your membership tier.")
+        flash("You've reached your upload limit for your membership tier.", "danger")
         return redirect(url_for("upload"))
 
     file = request.files.get("book")
     if not file or file.filename == "":
-        flash("Please choose a PDF to upload.")
+        flash("Please choose a PDF to upload.", "danger")
         return redirect(url_for("upload"))
 
     if not file.filename.lower().endswith(".pdf"):
-        flash("Only PDF files are supported right now.")
+        flash("Only PDF files are supported right now.", "danger")
         return redirect(url_for("upload"))
 
-    # --- Save the file locally with a safe, unique-ish name ---
+    # --- Save the file locally with a safe and unique name ---
     filename = secure_filename(file.filename)
     user_folder = os.path.join(UPLOAD_FOLDER, str(user_id))
     os.makedirs(user_folder, exist_ok=True)
@@ -313,7 +313,7 @@ def upload():
         )
     conn.commit()
 
-    flash("Book uploaded.")
+    flash("Book uploaded.", "success")
     return redirect(url_for("dashboard"))
 
 @app.route("/reader/<int:book_id>")
@@ -330,7 +330,7 @@ def reader(book_id):
         book = cur.fetchone()
 
     if book is None:
-        flash("That book doesn't exist or isn't yours.")
+        flash("That book doesn't exist or isn't yours.", "danger")
         return redirect(url_for("dashboard"))
 
     today = date.today()
@@ -395,12 +395,11 @@ def login():
         user = cur.fetchone()
 
     if user is None or not check_password_hash(user["password_hash"], password):
-        flash("Invalid email or password.")
+        flash("Invalid email or password.", "danger")
         return redirect(url_for("login"))
     
     session["user_id"] = user["id"]
     session["full_name"] = user["full_name"]
-    print(email, password)
 
     return redirect(url_for("index"))
 
@@ -418,16 +417,18 @@ def signup():
     password = request.form.get("password")
     confirm_password = request.form.get("confirm_password")
 
-    print(full_name, username, email, password, confirm_password)
-
     if not full_name or not username or not email or not password:
-        flash("All fields are required.")
+        flash("All fields are required.", "danger")
         return redirect(url_for("signup"))
 
     if password != confirm_password:
-        flash("Passwords do not match.")
+        flash("Passwords do not match.", "danger")
         return redirect(url_for("signup"))
 
+    if len(password) < 8:
+        flash("Password must be at least 8 characters.", "danger")
+        return redirect(url_for("signup"))
+    
     password_hash = generate_password_hash(password)
 
     conn = db.get_db()
@@ -444,19 +445,16 @@ def signup():
 
             id = cur.fetchone()['id']
             cur.execute("INSERT INTO streaks (id, days, streak_freeze_available) VALUES (%s, %s, %s)", (id, 0, False))
-            cur.execute("INSERT INTO leaderboard (user_id, score) VALUES (%s, %s)", (id, 0))   # <-- add this
+            cur.execute("INSERT INTO leaderboard (user_id, score) VALUES (%s, %s)", (id, 0))
 
         conn.commit()
     except psycopg2.errors.UniqueViolation:
         conn.rollback()
-        flash("An account with that email already exists.")
+        flash("An account with that email already exists.", "danger")
         return redirect(url_for("signup"))
 
-    flash("Account created. Please log in.")
+    flash("Account created. Please log in.", "success")
     return redirect(url_for("login"))
-
-LEVEL_XP_STEP = 500  # xp required per level — change this curve however you like
-
 
 
 @app.route("/logout", methods=["POST"])
@@ -484,16 +482,14 @@ def dashboard():
         user = cur.fetchone()
 
     if user is None:
-        flash("User doesn't exist.")
+        flash("User doesn't exist.", "danger")
         session.clear()
         return redirect(url_for("login"))
 
-    # --- XP -> level progress (doubling curve) ---
-    xp_needed_for_level = LEVEL_XP_STEP
     level, xp_into_level, xp_needed_for_level = compute_level(user["total_xp"])
     xp_percent = round((xp_into_level / xp_needed_for_level) * 100)
-    user["level"] = level  # keep the template's user.level display in sync
-
+    user["level"] = level 
+    
     # --- Quests ---
     today = date.today()
 
@@ -539,19 +535,6 @@ def dashboard():
     book_pct = 0
     if current_book and current_book["pages"]:
         book_pct = round((current_book["read_pages"] / current_book["pages"]) * 100)
-
-    # --- Quests ---
-    with conn.cursor() as cur:
-        cur.execute(
-            """
-            SELECT description, progress, goal_amount, xp_reward, coin_reward
-            FROM quests
-            WHERE user_id = %s AND completed = FALSE
-            LIMIT 3
-            """,
-            (user_id,),
-        )
-        quests = cur.fetchall()
 
     # --- Leaderboard (top 5) ---
     with conn.cursor() as cur:
@@ -604,8 +587,8 @@ def reset_quests():
 
     if not active_quests:
         return jsonify({"error": "No active quests to reset"}), 400
+    
 
-    # Avoid handing back a quest that's already active or already completed today
     with conn.cursor() as cur:
         cur.execute(
             "SELECT description FROM quests WHERE user_id = %s AND assigned_date = %s",
@@ -685,6 +668,10 @@ def profile():
                 flash("New passwords do not match.", "danger")
                 return redirect(url_for("profile"))
 
+            if len(new_password) < 8:
+                flash("New password must be at least 8 characters.", "danger")
+                return redirect(url_for("profile"))
+
             new_hash = generate_password_hash(new_password)
             with conn.cursor() as cur:
                 cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (new_hash, user_id))
@@ -701,7 +688,7 @@ def profile():
         user = cur.fetchone()
 
     if user is None:
-        flash("User doesn't exist.")
+        flash("User doesn't exist.", "danger")
         session.clear()
         return redirect(url_for("login"))
 
