@@ -2,7 +2,6 @@ from datetime import date, datetime
 import random
 import os
 from flask import Flask, render_template, request, redirect, url_for, session, flash, send_from_directory, jsonify
-from models.user import User
 from werkzeug.security import generate_password_hash, check_password_hash
 from dotenv import load_dotenv
 import psycopg2
