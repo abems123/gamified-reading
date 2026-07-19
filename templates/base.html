@@ -476,6 +476,34 @@
     .dropdown-item-btn{ color: var(--ember); }
     .profile-dropdown form{ margin: 0; }
 
+    .book-card, .continue-card{ position: relative; }
+
+    .delete-form{
+        position: absolute;
+        top: 0.6rem;
+        right: 0.6rem;
+        margin: 0;
+        z-index: 2;
+    }
+    .delete-btn{
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
+        background: rgba(20,24,31,0.5);
+        border: 1px solid var(--line);
+        color: var(--paper-dim);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background .12s ease, color .12s ease;
+    }
+    .delete-btn:hover{
+        background: rgba(193,80,46,0.18);
+        color: var(--ember);
+        border-color: rgba(193,80,46,0.4);
+    }
+
     @media (prefers-reduced-motion: reduce){
         .profile-dropdown{ transition: none; }
     }
@@ -522,7 +550,6 @@
         <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
         <a href="{{ url_for('leaderboard_page') }}" class="{{ 'active' if request.endpoint == 'leaderboard_page' }}">Leaderboard</a>
         <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">Profile</a>
-        <a href="#">Upgrade</a>
     </div>
     <div class="navright">
         <span class="membership-pill">{{ user.membership | default('Free', true) }}</span>

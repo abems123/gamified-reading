@@ -524,13 +524,14 @@ def dashboard():
     # --- Books: current + rest of library ---
     with conn.cursor() as cur:
         cur.execute(
-          "SELECT * FROM books WHERE user_id = %s ORDER BY last_opened_at DESC NULLS LAST, id DESC",
+        "SELECT * FROM books WHERE user_id = %s ORDER BY last_opened_at DESC NULLS LAST, id DESC",
             (user_id,),
         )
-        all_books = cur.fetchall()
+        all_books_list = cur.fetchall()
 
-    current_book = all_books[0] if all_books else None
-    books = all_books[1:] if all_books else []
+    current_book = all_books_list[0] if all_books_list else None
+    books = all_books_list[1:4] if all_books_list else []   # cap the dashboard grid at 4
+    has_more_books = len(all_books_list) > 5                 # true if there's anything beyond current + 4
 
     book_pct = 0
     if current_book and current_book["pages"]:
@@ -559,6 +560,7 @@ def dashboard():
         streak_days=user["streak_days"] or 0,
         streak_freeze_available=user["streak_freeze_available"] or False,
         xp_into_level=xp_into_level,
+        has_more_books=has_more_books,
         xp_needed_for_level=xp_needed_for_level,
         quests_done_for_today=quests_done_for_today,
         xp_percent=xp_percent,
@@ -616,6 +618,28 @@ def reset_quests():
     conn.commit()
 
     return jsonify({"success": True})
+
+@app.route("/books")
+@login_required
+def all_books_page():
+    user_id = session["user_id"]
+    conn = db.get_db()
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT membership, uploaded_books FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+
+    limit = MEMBERSHIP_LIMITS.get(user["membership"] or "free", 1)
+    can_upload = user["uploaded_books"] < limit
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT * FROM books WHERE user_id = %s ORDER BY last_opened_at DESC NULLS LAST, id DESC",
+            (user_id,),
+        )
+        books = cur.fetchall()
+
+    return render_template("books.html", books=books, can_upload=can_upload, upload_limit=limit)
 
 @app.route("/profile", methods=["GET", "POST"])
 @login_required
@@ -712,6 +736,40 @@ def reset_book_progress(book_id):
     conn.commit()
 
     return jsonify({"success": True})
+
+@app.route("/books/<int:book_id>/delete", methods=["POST"])
+@login_required
+def delete_book(book_id):
+    user_id = session["user_id"]
+    conn = db.get_db()
+
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT filename FROM books WHERE id = %s AND user_id = %s",
+            (book_id, user_id),
+        )
+        book = cur.fetchone()
+
+    if book is None:
+        flash("That book doesn't exist or isn't yours.", "danger")
+        return redirect(url_for("dashboard"))
+
+    with conn.cursor() as cur:
+        cur.execute("DELETE FROM books WHERE id = %s AND user_id = %s", (book_id, user_id))
+        cur.execute(
+            "UPDATE users SET uploaded_books = GREATEST(uploaded_books - 1, 0) WHERE id = %s",
+            (user_id,),
+        )
+    conn.commit()
+
+    # Remove the file from disk only after the DB delete succeeds
+    user_folder = os.path.join(UPLOAD_FOLDER, str(user_id))
+    filepath = os.path.join(user_folder, book["filename"])
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    flash("Book removed.", "success")
+    return redirect(url_for("dashboard"))
 
 @app.context_processor
 def inject_year():

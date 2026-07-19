@@ -96,8 +96,15 @@ document.getElementById('questResetBtn')?.addEventListener('click', async functi
         </div>
         {% if current_book %}
         <div class="continue-card">
-            <div class="book-spine"></div>
-            <div class="continue-info">
+                <form method="POST" action="{{ url_for('delete_book', book_id=current_book.id) }}"
+                    onsubmit="return confirm('Remove &quot;{{ current_book.title }}&quot;? This can't be undone.');"
+                    class="delete-form">
+                    <button type="submit" class="delete-btn" title="Remove book" aria-label="Remove {{ current_book.title }}">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                    </button>
+                </form>
+                <div class="book-spine"></div>
+                <div class="continue-info">
                 <div class="title">{{ current_book.title }}</div>
                 <div class="meta">
                     Page {{ current_book.read_pages | default(0) }} of {{ current_book.pages | default(0) }}
@@ -108,7 +115,7 @@ document.getElementById('questResetBtn')?.addEventListener('click', async functi
                 </div>
                 <div class="continue-actions">
                     <a href="{{ url_for('reader', book_id=current_book.id) }}" class="btn btn-primary">Continue reading</a>
-                    <a href="#" class="btn btn-ghost">View all books</a>
+                    <a href="{{ url_for('all_books_page') }}" class="btn btn-ghost">View all books</a>
                 </div>
             </div>
         </div>
@@ -128,16 +135,26 @@ document.getElementById('questResetBtn')?.addEventListener('click', async functi
         <!-- Library -->
         <div class="section-head">
             <h2>Your library</h2>
-            <span class="link">{{ user.uploaded_books | default(2) }} / {{ upload_limit | default(1) }} documents</span>
+            <span class="link">
+                {{ user.uploaded_books | default(0) }} / {{ upload_limit | default(1) }} documents
+                {% if has_more_books %} &middot; <a href="{{ url_for('all_books_page') }}">View all</a>{% endif %}
+            </span>
         </div>
         <div class="library-grid">
             {% for book in books %}
-            <div class="book-card">
-                <div class="book-spine small"></div>
-                <div class="b-title">{{ book.title }}</div>
-                <div class="b-meta">Page {{ book.read_pages | default(0) }} of {{ book.pages | default(0) }}</div>
-                <a href="{{ url_for('reader', book_id=book.id) }}" class="btn btn-primary" style="justify-content:center;">Read</a>
-            </div>
+                <div class="book-card">
+                    <form method="POST" action="{{ url_for('delete_book', book_id=book.id) }}"
+                        onsubmit="return confirm('Remove &quot;{{ book.title }}&quot;? This can't be undone.');"
+                        class="delete-form">
+                        <button type="submit" class="delete-btn" title="Remove book" aria-label="Remove {{ book.title }}">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        </button>
+                    </form>
+                    <div class="book-spine small"></div>
+                    <div class="b-title">{{ book.title }}</div>
+                    <div class="b-meta">Page {{ book.read_pages | default(0) }} of {{ book.pages | default(0) }}</div>
+                    <a href="{{ url_for('reader', book_id=book.id) }}" class="btn btn-primary" style="justify-content:center;">Read</a>
+                </div>
             {% endfor %}
 
             {% if can_upload | default(false) %}

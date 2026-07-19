@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Your library · Chapters{% endblock %}
+
+{% block extra_style %}
+<style>
+    .library-head{
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        margin-bottom: 1.6rem;
+    }
+    .library-head h1{ font-size: 1.7rem; }
+    .library-head .count{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 0.85rem;
+        color: var(--paper-dim);
+    }
+
+    .back-row{ margin-bottom: 1rem; }
+    .back-row a{
+        font-size: 0.85rem;
+        color: var(--paper-dim);
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+    }
+    .back-row a:hover{ color: var(--amber); }
+
+    .full-library-grid{
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+
+    .lib-empty{
+        text-align: center;
+        padding: 3.5rem 1.5rem;
+        color: var(--paper-dim);
+        background: var(--surface);
+        border: 1px dashed var(--line);
+        border-radius: var(--radius);
+    }
+    .lib-empty strong{
+        display: block;
+        font-family: 'Fraunces', serif;
+        font-size: 1.2rem;
+        color: var(--paper);
+        margin-bottom: 0.4rem;
+        font-weight: 600;
+    }
+
+    @media (max-width: 980px){
+        .full-library-grid{ grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px){
+        .full-library-grid{ grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="flash-stack">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="back-row">
+    <a href="{{ url_for('dashboard') }}">&larr; Back to dashboard</a>
+</div>
+
+<div class="library-head">
+    <h1>Your library</h1>
+    <span class="count">{{ books|length }} book{{ 's' if books|length != 1 else '' }}</span>
+</div>
+
+{% if books and books|length > 0 %}
+<div class="full-library-grid">
+    {% for book in books %}
+    <div class="book-card">
+        <form method="POST" action="{{ url_for('delete_book', book_id=book.id) }}"
+              onsubmit="return confirm('Remove &quot;{{ book.title }}&quot;? This can\'t be undone.');"
+              class="delete-form">
+            <button type="submit" class="delete-btn" title="Remove book" aria-label="Remove {{ book.title }}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m-8 0v13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            </button>
+        </form>
+        <div class="book-spine small"></div>
+        <div class="b-title">{{ book.title }}</div>
+        <div class="b-meta">Page {{ book.read_pages | default(0) }} of {{ book.pages | default(0) }}</div>
+        <a href="{{ url_for('reader', book_id=book.id) }}" class="btn btn-primary" style="justify-content:center;">Read</a>
+    </div>
+    {% endfor %}
+
+    {% if can_upload %}
+    <a href="{{ url_for('upload') }}" class="upload-card">
+        <span class="plus">+</span>
+        <span>Upload a book</span>
+        <small>PDF &middot; up to your plan's size limit</small>
+    </a>
+    {% else %}
+    <div class="upload-card">
+        <span class="plus">+</span>
+        <span>Upload limit reached</span>
+        <small>Upgrade your membership for more slots</small>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="lib-empty">
+    <strong>Your library is empty.</strong>
+    Upload your first book to start earning XP.
+    <div style="margin-top:1.2rem;">
+        <a href="{{ url_for('upload') }}" class="btn btn-primary">Upload a book</a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
