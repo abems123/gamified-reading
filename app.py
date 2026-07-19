@@ -726,11 +726,15 @@ def reset_book_progress(book_id):
 
     return jsonify({"success": True})
 
+@app.context_processor
+def inject_year():
+    return {"current_year": datetime.now().year}
+
 @app.route("/")
 def index():
     if "user_id" in session:
-        return "Welcome back " + session['full_name']
-    return "Hello from Flask!"
+        return redirect(url_for("dashboard"))
+    return render_template("home.html")
 
 if __name__ == "__main__":
     app.run(debug=True)
