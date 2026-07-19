@@ -434,6 +434,51 @@
     .quest-reset-btn:hover{ text-decoration: underline; }
     .quest-reset-btn:disabled{ opacity: 0.5; cursor: not-allowed; text-decoration: none; }
 
+    .profile-menu{ position: relative; }
+
+    .profile-dropdown{
+        position: absolute;
+        top: calc(100% + 10px);
+        right: 0;
+        min-width: 160px;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        padding: 0.4rem;
+        box-shadow: 0 12px 28px -12px rgba(0,0,0,0.6);
+        opacity: 0;
+        transform: translateY(-6px);
+        visibility: hidden;
+        pointer-events: none;
+        transition: opacity .15s ease, transform .15s ease;
+        z-index: 50;
+    }
+    .profile-dropdown.open{
+        opacity: 1;
+        transform: translateY(0);
+        visibility: visible;
+        pointer-events: auto;
+    }
+    .dropdown-item{
+        display: block;
+        width: 100%;
+        text-align: left;
+        padding: 0.55rem 0.7rem;
+        border-radius: 6px;
+        font-size: 0.86rem;
+        color: var(--paper-dim);
+        background: none;
+        border: none;
+        cursor: pointer;
+        font-family: 'Inter', sans-serif;
+    }
+    .dropdown-item:hover{ background: rgba(244,239,228,0.06); color: var(--paper); }
+    .dropdown-item-btn{ color: var(--ember); }
+    .profile-dropdown form{ margin: 0; }
+
+    @media (prefers-reduced-motion: reduce){
+        .profile-dropdown{ transition: none; }
+    }
     @media (max-width: 980px) {
         .hero-row { grid-template-columns: 1fr 1fr; }
         .main-grid { grid-template-columns: 1fr; }
@@ -476,13 +521,21 @@
     <div class="navlinks">
         <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">Dashboard</a>
         <a href="{{ url_for('leaderboard_page') }}" class="{{ 'active' if request.endpoint == 'leaderboard_page' }}">Leaderboard</a>
-        <a href="#">Profile</a>
+        <a href="{{ url_for('profile') }}" class="{{ 'active' if request.endpoint == 'profile' }}">Profile</a>
         <a href="#">Upgrade</a>
     </div>
     <div class="navright">
-        <span class="membership-pill">{{ user.membership | default('Free') }}</span>
-        <div class="avatar-btn" title="{{ user.full_name | default('Reader') }}">
-            {{ (user.full_name | default('R'))[0] | upper }}
+        <span class="membership-pill">{{ user.membership | default('Free', true) }}</span>
+        <div class="profile-menu">
+            <button type="button" class="avatar-btn" id="avatarBtn" aria-haspopup="true" aria-expanded="false" title="{{ user.full_name | default('Reader') }}">
+                {{ (user.full_name | default('R'))[0] | upper }}
+            </button>
+            <div class="profile-dropdown" id="profileDropdown">
+                <a href="{{ url_for('profile') }}" class="dropdown-item">Profile</a>
+                <form method="POST" action="{{ url_for('logout') }}">
+                    <button type="submit" class="dropdown-item dropdown-item-btn">Log out</button>
+                </form>
+            </div>
         </div>
     </div>
 </nav>
@@ -491,6 +544,31 @@
 {% block content %}{% endblock %}
 </div>
 
+<script>
+(function(){
+    const btn = document.getElementById('avatarBtn');
+    const menu = document.getElementById('profileDropdown');
+    if(!btn || !menu) return;
+
+    function closeMenu(){
+        menu.classList.remove('open');
+        btn.setAttribute('aria-expanded', 'false');
+    }
+    function toggleMenu(e){
+        e.stopPropagation();
+        const isOpen = menu.classList.toggle('open');
+        btn.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+    }
+
+    btn.addEventListener('click', toggleMenu);
+    document.addEventListener('click', function(e){
+        if(!menu.contains(e.target) && e.target !== btn) closeMenu();
+    });
+    document.addEventListener('keydown', function(e){
+        if(e.key === 'Escape') closeMenu();
+    });
+})();
+</script>
 {% block scripts %}{% endblock %}
 
 </body>

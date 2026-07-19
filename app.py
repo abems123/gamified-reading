@@ -41,7 +41,12 @@ def login_required(f):
 UPLOAD_FOLDER = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-MEMBERSHIP_LIMITS = {"free": 1, "plus": 5, "pro": 10}
+MEMBERSHIP_LIMITS = {
+    "free": 1,
+    "plus": 5,
+    "pro": 10,
+    "admin": 999999
+}
 
 @app.route("/reader/<int:book_id>/track", methods=["POST"])
 @login_required
@@ -430,11 +435,11 @@ def signup():
         with conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO users (username, full_name, email, password_hash) 
-                VALUES (%s, %s, %s, %s) 
+                INSERT INTO users (username, full_name, email, password_hash, membership) 
+                VALUES (%s, %s, %s, %s, %s) 
                 RETURNING id
                 """,
-                (username, full_name, email, password_hash),
+                (username, full_name, email, password_hash, "free"),
             )
 
             id = cur.fetchone()['id']
@@ -452,11 +457,13 @@ def signup():
 
 LEVEL_XP_STEP = 500  # xp required per level — change this curve however you like
 
-MEMBERSHIP_LIMITS = {
-    "free": 1,
-    "plus": 5,
-    "pro": 10,
-}
+
+
+@app.route("/logout", methods=["POST"])
+def logout():
+    session.clear()
+    flash("You've been logged out.", "success")
+    return redirect(url_for("login"))
 
 @app.route("/dashboard")
 @login_required
@@ -626,6 +633,79 @@ def reset_quests():
     conn.commit()
 
     return jsonify({"success": True})
+
+@app.route("/profile", methods=["GET", "POST"])
+@login_required
+def profile():
+    user_id = session["user_id"]
+    conn = db.get_db()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+
+        if action == "update_info":
+            full_name = request.form.get("full_name", "").strip()
+            username = request.form.get("username", "").strip()
+            email = request.form.get("email", "").strip()
+
+            if not full_name or not username or not email:
+                flash("All fields are required.", "danger")
+                return redirect(url_for("profile"))
+
+            try:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "UPDATE users SET full_name = %s, username = %s, email = %s WHERE id = %s",
+                        (full_name, username, email, user_id),
+                    )
+                conn.commit()
+            except psycopg2.errors.UniqueViolation:
+                conn.rollback()
+                flash("That username or email is already taken.", "danger")
+                return redirect(url_for("profile"))
+
+            session["full_name"] = full_name
+            flash("Profile updated.", "success")
+            return redirect(url_for("profile"))
+
+        elif action == "change_password":
+            current_password = request.form.get("current_password", "")
+            new_password = request.form.get("new_password", "")
+            confirm_password = request.form.get("confirm_password", "")
+
+            with conn.cursor() as cur:
+                cur.execute("SELECT password_hash FROM users WHERE id = %s", (user_id,))
+                row = cur.fetchone()
+
+            if row is None or not check_password_hash(row["password_hash"], current_password):
+                flash("Current password is incorrect.", "danger")
+                return redirect(url_for("profile"))
+
+            if not new_password or new_password != confirm_password:
+                flash("New passwords do not match.", "danger")
+                return redirect(url_for("profile"))
+
+            new_hash = generate_password_hash(new_password)
+            with conn.cursor() as cur:
+                cur.execute("UPDATE users SET password_hash = %s WHERE id = %s", (new_hash, user_id))
+            conn.commit()
+
+            flash("Password changed.", "success")
+            return redirect(url_for("profile"))
+
+        flash("Unknown action.", "danger")
+        return redirect(url_for("profile"))
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT * FROM users WHERE id = %s", (user_id,))
+        user = cur.fetchone()
+
+    if user is None:
+        flash("User doesn't exist.")
+        session.clear()
+        return redirect(url_for("login"))
+
+    return render_template("profile.html", user=user)
 
 @app.route("/reader/<int:book_id>/reset", methods=["POST"])
 @login_required

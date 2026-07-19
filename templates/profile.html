@@ -1,0 +1,328 @@
+{% extends "base.html" %}
+{% block title %}Profile · Chapters{% endblock %}
+
+{% block extra_style %}
+<style>
+    .profile-head{
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 1.4rem;
+        background: linear-gradient(160deg, var(--surface-2), var(--surface));
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.8rem;
+        margin-bottom: 1.75rem;
+    }
+    .profile-head-main{ display: flex; align-items: center; gap: 1.4rem; }
+    .profile-avatar{
+        width: 72px;
+        height: 72px;
+        border-radius: 50%;
+        background: linear-gradient(150deg, var(--amber), var(--amber-dim));
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: 'Fraunces', serif;
+        font-weight: 700;
+        font-size: 1.8rem;
+        color: var(--ink);
+        flex-shrink: 0;
+    }
+    .profile-head h1{ font-size: 1.5rem; margin-bottom: 0.25rem; }
+    .profile-head .profile-email{ font-size: 0.88rem; color: var(--paper-dim); }
+    .profile-head .membership-pill{ margin-top: 0.6rem; display: inline-block; }
+
+    .settings-grid{
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 2.25rem;
+    }
+
+    .panel{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.5rem 1.6rem;
+    }
+    .panel h2{ font-size: 1.05rem; margin-bottom: 1.2rem; }
+
+    .field{
+        margin-bottom: 1rem;
+    }
+    .field label{
+        display: block;
+        font-size: 0.78rem;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+        color: var(--paper-dim);
+        margin-bottom: 0.4rem;
+    }
+    .field input{
+        width: 100%;
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        padding: 0.65rem 0.8rem;
+        color: var(--paper);
+        font-family: 'Inter', sans-serif;
+        font-size: 0.92rem;
+    }
+    .field input:focus{
+        outline: none;
+        border-color: var(--amber-dim);
+        box-shadow: 0 0 0 3px rgba(227,168,75,0.12);
+    }
+    .field .hint{
+        font-size: 0.75rem;
+        color: var(--paper-dim);
+        margin-top: 0.35rem;
+    }
+
+    .panel form{ display: flex; flex-direction: column; }
+    .panel .btn{ align-self: flex-start; margin-top: 0.4rem; }
+
+    /* ============ Membership / plans ============ */
+    .plans-head{
+        margin-bottom: 1.2rem;
+    }
+    .plans-head h2{ font-size: 1.2rem; margin-bottom: 0.3rem; }
+    .plans-head p{ font-size: 0.88rem; color: var(--paper-dim); }
+
+    .plans-grid{
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 1.1rem;
+        margin-bottom: 2rem;
+    }
+
+    .plan-card{
+        background: var(--surface);
+        border: 1px solid var(--line);
+        border-radius: var(--radius);
+        padding: 1.5rem 1.4rem;
+        display: flex;
+        flex-direction: column;
+        position: relative;
+    }
+    .plan-card.current{
+        border-color: color-mix(in srgb, var(--amber) 45%, var(--line));
+        box-shadow: 0 0 0 1px color-mix(in srgb, var(--amber) 20%, transparent);
+    }
+    .plan-current-tag{
+        position: absolute;
+        top: -11px;
+        left: 1.3rem;
+        background: var(--amber);
+        color: var(--ink);
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        padding: 0.25rem 0.6rem;
+        border-radius: 100px;
+    }
+
+    .plan-name{
+        font-family: 'Fraunces', serif;
+        font-weight: 600;
+        font-size: 1.15rem;
+        margin-bottom: 0.3rem;
+    }
+    .plan-price{
+        font-family: 'IBM Plex Mono', monospace;
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: var(--amber);
+        margin-bottom: 1rem;
+    }
+    .plan-price span{
+        font-family: 'Inter', sans-serif;
+        font-size: 0.75rem;
+        font-weight: 400;
+        color: var(--paper-dim);
+    }
+
+    .plan-features{
+        list-style: none;
+        margin: 0 0 1.4rem;
+        padding: 0;
+        flex: 1;
+    }
+    .plan-features li{
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        font-size: 0.85rem;
+        color: var(--paper-dim);
+        padding: 0.4rem 0;
+        border-top: 1px solid var(--line);
+    }
+    .plan-features li:first-child{ border-top: none; }
+    .plan-features li svg{ flex-shrink: 0; margin-top: 2px; }
+
+    .plan-btn{
+        width: 100%;
+        justify-content: center;
+    }
+    .plan-btn.disabled{
+        position: relative;
+    }
+    .plan-btn.disabled:hover::after{
+        content: "Coming soon";
+        position: absolute;
+        bottom: calc(100% + 8px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: var(--surface-2);
+        border: 1px solid var(--line);
+        color: var(--paper);
+        font-size: 0.72rem;
+        padding: 0.35rem 0.6rem;
+        border-radius: 6px;
+        white-space: nowrap;
+        pointer-events: none;
+    }
+
+    .danger-panel{
+        border-color: rgba(193,80,46,0.25);
+    }
+    .danger-panel h2{ color: var(--ember); }
+    .danger-panel p{ font-size: 0.85rem; color: var(--paper-dim); margin-bottom: 1rem; }
+    .btn-danger{
+        background: transparent;
+        border: 1px solid var(--ember);
+        color: var(--ember);
+    }
+    .btn-danger:hover{ background: rgba(193,80,46,0.08); }
+
+    @media (max-width: 900px){
+        .settings-grid{ grid-template-columns: 1fr; }
+        .plans-grid{ grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Flash messages -->
+<div class="flash-stack">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="flash {{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+</div>
+
+<div class="profile-head">
+    <div class="profile-head-main">
+        <div class="profile-avatar">{{ (user.full_name | default('R'))[0] | upper }}</div>
+        <div>
+            <h1>{{ user.full_name | default('Reader') }}</h1>
+            <div class="profile-email">{{ user.email }}</div>
+            <span class="membership-pill">{{ user.membership | default('Free', true) }}</span>
+        </div>
+    </div>
+    <form method="POST" action="{{ url_for('logout') }}">
+        <button type="submit" class="btn btn-ghost">Log out</button>
+    </form>
+</div>
+
+<div class="settings-grid">
+
+    <div class="panel">
+        <h2>Account details</h2>
+        <form method="POST" action="{{ url_for('profile') }}">
+            <input type="hidden" name="action" value="update_info">
+            <div class="field">
+                <label for="full_name">Full name</label>
+                <input type="text" id="full_name" name="full_name" value="{{ user.full_name }}" required>
+            </div>
+            <div class="field">
+                <label for="username">Username</label>
+                <input type="text" id="username" name="username" value="{{ user.username }}" required>
+            </div>
+            <div class="field">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" value="{{ user.email }}" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Save changes</button>
+        </form>
+    </div>
+
+    <div class="panel">
+        <h2>Change password</h2>
+        <form method="POST" action="{{ url_for('profile') }}">
+            <input type="hidden" name="action" value="change_password">
+            <div class="field">
+                <label for="current_password">Current password</label>
+                <input type="password" id="current_password" name="current_password" required>
+            </div>
+            <div class="field">
+                <label for="new_password">New password</label>
+                <input type="password" id="new_password" name="new_password" required>
+            </div>
+            <div class="field">
+                <label for="confirm_password">Confirm new password</label>
+                <input type="password" id="confirm_password" name="confirm_password" required>
+                <div class="hint">Use at least 8 characters.</div>
+            </div>
+            <button type="submit" class="btn btn-primary">Update password</button>
+        </form>
+    </div>
+
+</div>
+
+<div class="plans-head">
+    <h2>Membership</h2>
+    <p>Upgrade for more upload slots and reading features. Billing isn't live yet — buttons below are a preview.</p>
+</div>
+
+<div class="plans-grid">
+
+    <div class="plan-card {{ 'current' if (user.membership | default('free')) == 'free' }}">
+        {% if (user.membership | default('free')) == 'free' %}<span class="plan-current-tag">Current plan</span>{% endif %}
+        <div class="plan-name">Free</div>
+        <div class="plan-price">$0 <span>/ month</span></div>
+        <ul class="plan-features">
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 1 book upload</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> XP, streaks &amp; quests</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Leaderboard access</li>
+        </ul>
+        {% if (user.membership | default('free')) == 'free' %}
+        <button type="button" class="btn btn-ghost plan-btn disabled" disabled>Current plan</button>
+        {% else %}
+        <button type="button" class="btn btn-ghost plan-btn disabled" disabled>Coming soon</button>
+        {% endif %}
+    </div>
+
+    <div class="plan-card {{ 'current' if user.membership == 'plus' }}">
+        {% if user.membership == 'plus' %}<span class="plan-current-tag">Current plan</span>{% endif %}
+        <div class="plan-name">Plus</div>
+        <div class="plan-price">$4.99 <span>/ month</span></div>
+        <ul class="plan-features">
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 5 book uploads</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Everything in Free</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Priority quest refresh</li>
+        </ul>
+        <button type="button" class="btn btn-primary plan-btn disabled" disabled>{{ 'Current plan' if user.membership == 'plus' else 'Upgrade' }}</button>
+    </div>
+
+    <div class="plan-card {{ 'current' if user.membership == 'pro' }}">
+        {% if user.membership == 'pro' %}<span class="plan-current-tag">Current plan</span>{% endif %}
+        <div class="plan-name">Pro</div>
+        <div class="plan-price">$9.99 <span>/ month</span></div>
+        <ul class="plan-features">
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> 10 book uploads</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Everything in Plus</li>
+            <li><svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M20 6 9 17l-5-5" stroke="#7A9471" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Streak freeze bonus</li>
+        </ul>
+        <button type="button" class="btn btn-primary plan-btn disabled" disabled>{{ 'Current plan' if user.membership == 'pro' else 'Upgrade' }}</button>
+    </div>
+
+</div>
+
+{% endblock %}
